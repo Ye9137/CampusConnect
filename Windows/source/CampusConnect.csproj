@@ -1,14 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.0.3</Version>
+    <Version>2.0.3-local.6</Version>
+    <FileVersion>2.0.3.6</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -25,6 +27,7 @@
     <EmbeddedResource Include="PortalTemplate.js" />
     <EmbeddedResource Include="PortalAgreements.js" />
     <EmbeddedResource Include="../../macOS/source/PortalBootstrap.js" LogicalName="CampusConnect.PortalBootstrap.js" />
+    <EmbeddedResource Include="PortalCaptcha.js" />
     <EmbeddedResource Include="Desktop.html" />
   </ItemGroup>
   <!-- WebView2 ships both UI bindings; this app uses WinForms only. -->

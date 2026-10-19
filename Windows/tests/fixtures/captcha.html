@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><body><form>
+<input id="username"><input id="pwd" type="password">
+<div><img id="validCodeImg" alt="验证码" width="220" height="70"><input id="validCode" maxlength="4"></div>
+<a id="loginLink" onclick="doauthen()" style="display:block;width:120px;height:45px">登录</a>
+</form><script>
+window.loginCalls=0;window.codes=[];
+window.AuthInterFace={login(){loginCalls++;codes.push(document.querySelector('#validCode').value)}};
+function doauthen(){AuthInterFace.login()}
+window.changeImage=text=>{const c=document.createElement('canvas');c.width=220;c.height=70;
+const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,220,70);x.fillStyle='black';x.font='48px Arial';x.fillText(text,16,52);document.querySelector('img').src=c.toDataURL()};
+changeImage('8042');
+</script></body></html>

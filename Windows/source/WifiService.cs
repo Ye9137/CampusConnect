@@ -29,9 +29,9 @@ internal sealed class WifiService : IDisposable
         var connection = wifi.CurrentConnection(ssid);
         return connection.Ssid == ssid ? connection.InterfaceId : null;
     });
-    public static Task<WifiSnapshot> ReadSnapshotAsync(string? preferred = null, bool scan = true) => Task.Run(async () => {
+    public static Task<WifiSnapshot> ReadSnapshotAsync(string? preferred = null, bool scan = true, bool waitForScan = true) => Task.Run(async () => {
         using var wifi = new WifiService();
-        return await wifi.ScanAsync(preferred, scan).ConfigureAwait(false);
+        return await wifi.ScanAsync(preferred, scan, waitForScan).ConfigureAwait(false);
     });
     public static Task JoinAsync(CampusProfile profile, WifiSnapshot snapshot) => Task.Run(async () => {
         using var wifi = new WifiService();
@@ -71,17 +71,13 @@ internal sealed class WifiService : IDisposable
         }
         return first;
     }
-    public async Task<WifiSnapshot> ScanAsync(string? preferred = null, bool scan = true)
+    public async Task<WifiSnapshot> ScanAsync(string? preferred = null, bool scan = true, bool waitForScan = true)
     {
         var interfaces = Interfaces();
         if (interfaces.Count == 0) throw new InvalidOperationException("没有找到 Wi-Fi 网卡，请检查无线网卡和 WLAN AutoConfig 服务。");
-        if (scan) {
-            foreach (var item in interfaces) {
-                var id = item.Id;
-                var code = WlanScan(handle, ref id, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-                if (code == 5) Check(code);
-            }
-            await Task.Delay(1800).ConfigureAwait(false); // Read the refreshed WLAN cache after scanning.
+        if (scan && waitForScan) {
+            RequestScan(interfaces);
+            await Task.Delay(1800).ConfigureAwait(false);
         }
         var networks = new List<WifiNetwork>();
         foreach (var item in interfaces) {
@@ -110,7 +106,19 @@ internal sealed class WifiService : IDisposable
                         networks[i] = networks[i] with { ProfileName = preferred };
             }
         }
-        return new(CurrentSsid(preferred), networks.OrderByDescending(n => n.Signal).ToList());
+        var snapshot = new WifiSnapshot(CurrentSsid(preferred), networks.OrderByDescending(n => n.Signal).ToList());
+        // WlanScan may flush its cache: read the previous result BEFORE requesting
+        // a background scan. Subsequent one-second heartbeats read the new result.
+        if (scan && !waitForScan) RequestScan(interfaces);
+        return snapshot;
+    }
+    private void RequestScan(IEnumerable<InterfaceInfo> interfaces)
+    {
+        foreach (var item in interfaces) {
+            var id = item.Id;
+            var code = WlanScan(handle, ref id, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            if (code == 5) Check(code);
+        }
     }
     public async Task ConnectAsync(CampusProfile profile, WifiSnapshot snapshot)
     {

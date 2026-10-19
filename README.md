@@ -5,13 +5,13 @@
 > [!IMPORTANT]
 > **适配范围与交流反馈**
 >
-> 本程序目前已支持 **河南工业职业技术大学**、**郑州信息工程职业学院**、**无锡职业技术大学**、**天津石油职业技术学院**、**华东交通大学**、**南通大学** 的校园网认证，也欢迎其他学校的同学下载测试。
+> 本程序目前已支持 **河南工业职业技术大学**、**郑州信息工程职业学院**、**无锡职业技术大学**、**天津石油职业技术学院**、**华东交通大学**、**南通大学**、**上海东海职业技术学院（Windows）** 的校园网认证，也欢迎其他学校的同学下载测试。
 >
 > 如果使用正常，也欢迎通过程序左下角的感叹号查看作者抖音，关注并发送你的大学名称，帮助更多小伙伴使用小助手。也可以在 [GitHub Issues](https://github.com/Ye9137/CampusConnect/issues) 中反馈 **学校名称**，帮助更多同学了解适用范围。
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows 2.0.3 修订正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.0.3) · [更新说明](Windows/2.0.3-更新说明.md)。修复运营商文字标签识别，补充抖音关注与大学名称反馈提示，新增南通大学支持说明。**[macOS 2.0.3 通用版](https://github.com/Ye9137/CampusConnect/releases/tag/macos-v2.0.3)** 同步运营商选择和反馈提示，支持 Apple 芯片与 Intel。
+**Windows 2.0.3-local.6**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/windows-v2.0.3-local.6) · [更新说明](Windows/2.0.3-local.6-更新说明.md)。新增上海东海职业技术学院登录支持、验证码本机识别与复制、独立输入窗口，目标网络改为每秒检测。**[macOS 2.0.3 通用版](https://github.com/Ye9137/CampusConnect/releases/tag/macos-v2.0.3)** 支持 Apple 芯片与 Intel。
 
 [![Build](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml/badge.svg)](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -19,6 +19,15 @@
 由 [Ye9137](https://github.com/Ye9137) 维护，使用 MIT 许可证开源。
 
 分别为 macOS 和 Windows 制作的桌面校园网连接工具。默认校园 Wi-Fi 为 `HNPI-STU`，认证地址为 `http://192.168.0.123`，可在设置中修改。
+
+## Windows 新增上海东海职业技术学院登录支持
+
+- 适配上海东海职业技术学院统一身份认证页面及动态数字验证码。
+- 提取验证码原图，使用 Windows 本机 OCR 识别，在独立窗口突出显示数字并支持一键复制、粘贴输入；识别失败可手动输入。
+- 上网认证页新增「输入验证码」入口。输入完成后按回车或点击登录；网页明确规定长度时，输满后自动确认。
+- 目标 Wi-Fi 每 1 秒检测一次，启动后立即检查，持续等待并尝试连接。
+
+本次仅更新 Windows。数字识别需要系统可用的 OCR 语言，请核对原图后确认；图片不上传。详见 [更新说明](Windows/2.0.3-local.6-更新说明.md)。
 
 ## macOS 2.0.3 同步更新
 
@@ -89,7 +98,7 @@ ping 使用系统路由，可能经过 VPN。Windows x64 与 macOS Apple 芯片 
 
 ## 下载
 
-**[Windows 2.0.3 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.0.3/CampusConnect-Windows-x64-2.0.3-Setup.exe)** · **[macOS 2.0.3 通用版](https://github.com/Ye9137/CampusConnect/releases/download/macos-v2.0.3/CampusConnect-macOS-universal-2.0.3.zip)** · [Windows 2.0.3 源码与校验文件](https://github.com/Ye9137/CampusConnect/releases/tag/v2.0.3)
+**[Windows 2.0.3-local.6 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/windows-v2.0.3-local.6/CampusConnect-Windows-x64-2.0.3-local.6-Setup.exe)** · **[macOS 2.0.3 通用版](https://github.com/Ye9137/CampusConnect/releases/download/macos-v2.0.3/CampusConnect-macOS-universal-2.0.3.zip)** · [Windows 源码与校验文件](https://github.com/Ye9137/CampusConnect/releases/tag/windows-v2.0.3-local.6)
 
 ## 2.0 正式版界面预览
 
@@ -171,7 +180,7 @@ Windows 安装版提供自定义安装目录、可选桌面快捷方式（默认
 3. 点击「立即连接」；网页认证在「上网认证」查看结果，系统认证及学校客户端按对应提示完成。
 4. 需要持续运行时，在设置中启用自动连接。关闭窗口后程序留在菜单栏 / 系统托盘；选择「退出」后停止。
 
-自动连接每 20 秒检查一次，仅连接名称完全匹配且可见的 Wi-Fi；两次连接尝试至少间隔 60 秒。Windows 1.4.3 与 macOS 1.4.4 均持续按间隔重试，直到成功或用户暂停。每次打开认证页最多自动提交一次，避免反复提交错误密码。验证码、运营商选择或多步登录需在页面中手动完成。
+Windows 2.0.3-local.6 每 1 秒检查目标网络，首次满足条件立即连接，Wi-Fi 失败后最早 1 秒重试；只连接名称完全匹配且可见的目标，系统扫描及关联耗时可能超过 1 秒。联网探测保持 20 秒间隔，网页认证失败保留退避。macOS 2.0.3 发布版仍每 20 秒检查，两次连接尝试至少间隔 60 秒。两平台持续重试直到成功或用户暂停。Windows 数字验证码可在独立窗口核对识别参考并输入，其他验证码或多步登录仍需在学校页面完成。
 
 认证信息只在已接入有线网络（有线模式）或当前 Wi-Fi 名称与设置匹配（Wi-Fi 模式），且网页协议 / 主机 / 端口与保存地址一致时自动填写。学校网页跳转到其他地址时，确认后更新设置再试。
 

@@ -32,6 +32,10 @@ const script = extra => template.replace('/*CAMPUS_CONFIG*/', JSON.stringify({ .
     equal(await page.locator('#terms').isChecked(), true);
     equal(await page.locator('#remember').isChecked(), false);
     equal(await page.locator('#news').isChecked(), false);
+    await load('<input id="remember" type="checkbox"><span>记住密码</span><input id="notice" type="checkbox"><span>本人承诺遵守网络安全法</span>');
+    equal(await page.evaluate(script()), 'submitted');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.locator('#remember').isChecked(), false);
     await load('<label for="terms">Agree to terms</label><input id="terms" type="checkbox" checked>');
     equal(await page.evaluate(script()), 'submitted');
     equal(await page.evaluate(() => agreementClicks), 0);
@@ -70,6 +74,40 @@ const script = extra => template.replace('/*CAMPUS_CONFIG*/', JSON.stringify({ .
     await load('', '<form><label><input id="other-form" type="checkbox" required>Agree to unrelated terms</label></form>');
     equal(await page.evaluate(script()), 'submitted');
     equal(await page.locator('#other-form').isChecked(), false);
+    html = fs.readFileSync(path.join(__dirname, 'fixtures/network-pledge.html'), 'utf8');
+    await page.goto('http://portal.test/login');
+    equal(await page.evaluate(script()), 'submitted');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.evaluate(() => pledgeAtSubmit), true);
+    equal(await page.locator('#remember').isChecked(), false);
+    equal(await page.evaluate(() => pledgeEvents.join(',')), 'click,input,change');
+    equal(await page.evaluate(script()), 'already-submitted');
+    equal(await page.evaluate(() => submissions), 1);
+    for (const markup of [
+      '<label><input id="notice" type="checkbox">本人承诺遵守上网行为规范，文明上网</label>',
+      '<input id="notice" type="checkbox"><font>本人承诺一切上网行为遵守网络管理规章制度</font>',
+      '<div><span>本人承诺一切上网行为遵守网络管理规章制度</span><input id="notice" type="checkbox"></div>',
+      '<input id="notice" type="checkbox">本人承诺一切上网行为遵守网络管理规章制度<br>',
+      '<div><span><input id="notice" type="checkbox"></span><span>本人承诺遵守网络安全法</span></div>'
+    ]) {
+      await load(markup + '<label><input id="remember" type="checkbox">记住密码</label>');
+      equal(await page.evaluate(script()), 'submitted');
+      equal(await page.locator('#notice').isChecked(), true);
+      equal(await page.locator('#remember').isChecked(), false);
+    }
+    // A shared form/container must not make the remember/marketing box look like terms.
+    await load('<input id="remember" type="checkbox"><span>记住密码</span><br><input id="notice" type="checkbox"><span>本人承诺遵守网络安全法</span><br><input id="news" type="checkbox"><span>订阅优惠广告</span>');
+    equal(await page.evaluate(script()), 'submitted');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.locator('#remember').isChecked(), false);
+    equal(await page.locator('#news').isChecked(), false);
+    await load('<input id="notice" type="checkbox"><span>本人承诺遵守网络安全法</span>');
+    await page.locator('#notice').check();
+    equal(await page.evaluate(script()), 'submitted');
+    equal(await page.evaluate(() => agreementClicks), 1);
+    await load('<input id="notice" type="checkbox" onclick="event.preventDefault()"><span>本人承诺遵守网络安全法</span>');
+    equal(await page.evaluate(script()), 'waiting-agreement');
+    equal(await page.evaluate(() => submissions), 0);
     console.log(`PASS: ${checks} agreement checks (required, terms, hidden controls, event handlers, duplicate prevention, manual blockers, origin, and unrelated options).`);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

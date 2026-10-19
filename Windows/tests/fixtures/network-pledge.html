@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>Offline network pledge reproduction</title>
+<!-- Reproduces the screenshot wording and layout, not the school's actual DOM. -->
+<form>
+  <h2>网络接入认证</h2>
+  <input name="username"><input type="password">
+  <div><input id="remember" type="checkbox"><span>记住密码</span></div>
+  <div><input id="notice" type="checkbox"><span>本人承诺一切上网行为遵守《中华人民共和国网络安全法》等国家有关法律、法规和广东海洋大学网络管理规章制度，恪守网络道德、文明上网。</span></div>
+  <button type="button" onclick="submissions++;pledgeAtSubmit=document.getElementById('notice').checked">登录</button>
+</form>
+<script>
+window.submissions=0;window.pledgeAtSubmit=false;window.pledgeEvents=[];
+for(const type of ['click','input','change']) document.getElementById('notice').addEventListener(type,()=>pledgeEvents.push(type));
+</script></html>

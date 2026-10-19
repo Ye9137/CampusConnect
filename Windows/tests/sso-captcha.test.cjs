@@ -1,0 +1,73 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
+const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8');
+const captcha=fs.readFileSync(path.join(__dirname,'../source/PortalCaptcha.js'),'utf8');
+const agreements=fs.readFileSync(path.join(__dirname,'../source/PortalAgreements.js'),'utf8');
+const fixture=fs.readFileSync(path.join(__dirname,'fixtures/unifri-sso-captcha.html'),'utf8');
+const probe=fs.readFileSync(path.join(__dirname,'../work/captcha-probe.js'),'utf8');
+const responseTemplate=fs.readFileSync(path.join(__dirname,'../work/captcha-image.js'),'utf8');
+const receivedImage=image=>responseTemplate.replace('"fixture-image"',JSON.stringify(image));
+const fill=template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({origin:'http://portal.test',username:'dummy-user',password:'dummy-password',submit:true,confirmSubmit:true}))
+ .replace('  /*CAMPUS_AGREEMENTS*/',agreements.trimEnd()).replace('  /*CAMPUS_CAPTCHA*/',captcha.trimEnd());
+(async()=>{const browser=await chromium.launch(process.env.CAMPUS_CHROME_PATH?{executablePath:process.env.CAMPUS_CHROME_PATH,headless:true}:{headless:true});let checks=0;
+const eq=(a,b)=>{assert.deepEqual(a,b);checks++};try{
+ const page=await browser.newPage();await page.route('http://portal.test/**',r=>r.fulfill({contentType:'text/html',body:fixture}));
+ const load=()=>page.goto('http://portal.test');
+ await load();eq(await page.evaluate(fill),'submitted');eq(await page.evaluate(()=>loginCalls),1);
+ await page.evaluate(()=>mountCaptcha());await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ eq(await page.evaluate(fill),'already-submitted');
+ eq(await page.evaluate(probe),'captcha-required');eq(await page.evaluate(()=>loginCalls),1);
+ const snapshot=await page.evaluate(()=>__campusCaptcha.read());eq(snapshot.length,0);assert.match(snapshot.image,/^data:image\/png;base64,/);checks++;
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),snapshot),'submitted');
+ eq(await page.evaluate(()=>codes),['','8042']);
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),snapshot),'captcha-stale');
+ await load();await page.evaluate(()=>{mountCaptcha();document.querySelector('button').disabled=true;
+  document.querySelector('[formcontrolname=captcha]').addEventListener('input',e=>{document.querySelector('button').disabled=e.target.value.length!==4})});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ eq(await page.evaluate(fill),'captcha-required');eq(await page.evaluate(()=>loginCalls),0);
+ const disabled=await page.evaluate(()=>__campusCaptcha.read());
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),disabled),'submitted');eq(await page.evaluate(()=>codes),['8042']);
+ await load();await page.evaluate(()=>{document.querySelector('input[type=text]').value='manual-user';document.querySelector('input[type=password]').value='manual-password';mountCaptcha()});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ eq(await page.evaluate(probe),'captcha-required');
+ const manual=await page.evaluate(()=>__campusCaptcha.read());await page.locator('input[type=password]').fill('changed-password');
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),manual),'captcha-stale');eq(await page.evaluate(()=>loginCalls),0);
+ await load();await page.evaluate(()=>{document.querySelector('input[type=text]').value='manual-user';document.querySelector('input[type=password]').value='manual-password';mountCaptcha();document.querySelector('[formcontrolname=captcha]').removeAttribute('placeholder')});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ eq(await page.evaluate(probe),'captcha-required');eq(await page.evaluate(()=>loginCalls),0);
+ // Original response image, without screenshots or another request to the school.
+ await load();await page.evaluate(()=>{mountCaptcha();document.querySelector('input[type=text]').value='manual-user';document.querySelector('input[type=password]').value='manual-password'});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ const original=await page.locator('img').getAttribute('src');
+ eq(await page.evaluate(receivedImage(original)),'captcha-image-ready');eq(await page.evaluate(probe),'captcha-required');
+ const api=await page.evaluate(()=>__campusCaptcha.read());eq(api.image,original);eq(api.source,'response');
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),api),'submitted');eq(await page.evaluate(()=>codes),['8042']);
+ // A refresh changes the page image before its load event; the old challenge must be rejected immediately.
+ await load();await page.evaluate(()=>{mountCaptcha();document.querySelector('input[type=text]').value='manual-user';document.querySelector('input[type=password]').value='manual-password'});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ const firstImage=await page.locator('img').getAttribute('src');await page.evaluate(receivedImage(firstImage));await page.evaluate(probe);
+ const beforeRefresh=await page.evaluate(()=>__campusCaptcha.read());
+ eq(await page.evaluate(ticket=>{document.querySelector('img').src='data:image/png;base64,pending';return __campusCaptcha.commit(ticket,'8042')},beforeRefresh.ticket),'captcha-stale');
+ eq(await page.evaluate(()=>loginCalls),0);
+ // A response for a different image cannot replace the visible challenge.
+ await load();await page.evaluate(()=>{mountCaptcha();document.querySelector('input[type=text]').value='manual-user';document.querySelector('input[type=password]').value='manual-password'});
+ await page.waitForFunction(()=>document.querySelector('img').complete&&document.querySelector('img').naturalWidth);
+ await page.evaluate(receivedImage('data:image/png;base64,unrelated'));eq(await page.evaluate(probe),'captcha-required');
+ eq((await page.evaluate(()=>__campusCaptcha.read())).source,'page');
+ // A late response must not change the serialization of a dialog already opened from the page.
+ const beforeLateResponse=await page.evaluate(()=>__campusCaptcha.read());
+ await page.evaluate(receivedImage(await page.locator('img').getAttribute('src')));
+ eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),beforeLateResponse),'submitted');
+ await page.goto('http://portal.test');
+ eq(await page.evaluate(responseTemplate.replace('http://portal.test','http://other.test')),'wrong-origin');
+ eq(await page.evaluate(()=>window.__campusCaptchaApiImage),undefined);
+ const shell=await browser.newPage();
+ await shell.addInitScript(()=>{window.commands=[];window.chrome={webview:{postMessage:m=>commands.push(m),addEventListener:()=>{}}}});
+ await shell.goto(require('node:url').pathToFileURL(path.join(__dirname,'../source/Desktop.html')).href);
+ await shell.evaluate(()=>campus.receive({kind:'state',state:{target:'Campus',campusConnected:true,webPortalEnabled:true,busy:false,networks:[]}}));
+ await shell.locator('[data-page="portal"]').click();
+ const button=shell.locator('[data-action="showCaptcha"]');eq(await button.isVisible(),true);eq(await button.isEnabled(),true);
+ await button.click();eq(await shell.evaluate(()=>commands.filter(m=>m.command==='showCaptcha').length),1);
+ eq(await shell.evaluate(()=>commands.filter(m=>m.command==='openPortal').length),0);
+ console.log(`PASS: ${checks} SSO checks (real-page structure, unnamed fields/image, delayed challenge, post-submit discovery, disabled button, no credential refill).`);
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

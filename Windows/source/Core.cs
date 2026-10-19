@@ -59,10 +59,13 @@ public sealed record CampusProfile
 
 public sealed class AutoPolicy
 {
+    public const int NetworkCheckIntervalMilliseconds = 1000;
+    public static readonly TimeSpan WifiScanInterval = TimeSpan.FromSeconds(4);
+    public static readonly TimeSpan InternetCheckInterval = TimeSpan.FromSeconds(20);
     public DateTimeOffset LastAttempt { get; private set; } = DateTimeOffset.MinValue;
     public bool ShouldJoin(bool enabled, string target, string? current, IEnumerable<string> visible, bool busy, DateTimeOffset now)
         => enabled && target.Length > 0 && current != target && visible.Contains(target, StringComparer.Ordinal)
-            && !busy && now - LastAttempt >= TimeSpan.FromSeconds(60);
+            && !busy && now - LastAttempt >= TimeSpan.FromMilliseconds(NetworkCheckIntervalMilliseconds);
     public bool ShouldPrepareWired(bool enabled, bool needed, bool busy, DateTimeOffset now)
         => enabled && needed && !busy && now - LastAttempt >= TimeSpan.FromSeconds(60);
     public void Begin(DateTimeOffset now) => LastAttempt = now;
@@ -92,6 +95,54 @@ public sealed class PortalRecovery
 
 public static class PortalScript
 {
+    public static string BuildCaptchaImage(CampusProfile profile, string image)
+    {
+        var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
+        var payload = JsonSerializer.Serialize(new { origin, image });
+        return """
+        (() => {
+          const response = /*RESPONSE*/;
+          if (location.origin !== response.origin) return 'wrong-origin';
+          window.__campusCaptchaApiImage = response.image;
+          return 'captcha-image-ready';
+        })()
+        """.Replace("/*RESPONSE*/", payload, StringComparison.Ordinal);
+    }
+
+    public static string BuildCaptchaProbe(CampusProfile profile)
+    {
+        var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
+        var payload = JsonSerializer.Serialize(new { origin, userSelector=profile.UserSelector,
+            passwordSelector=profile.PasswordSelector, submitSelector=profile.SubmitSelector, submit=profile.AutoSubmit });
+        using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
+            ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
+        using var reader = new StreamReader(stream);
+        return """
+        (() => {
+          const cfg = /*CONFIG*/;
+          if (location.origin !== cfg.origin) return 'wrong-origin';
+          const visible = e => e && !e.disabled && e.getClientRects().length > 0;
+          const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
+          let user, pass, submit;
+          try {
+            pass = cfg.passwordSelector ? document.querySelector(cfg.passwordSelector) :
+              [...document.querySelectorAll('input[type="password"]')].find(e => visible(e) && editable(e));
+            const root = pass?.form || document;
+            const users = [...root.querySelectorAll('input')].filter(e => editable(e) && visible(e) && /^(text|tel|email)$/.test(e.type));
+            user = cfg.userSelector ? document.querySelector(cfg.userSelector) :
+              users.find(e => /user|account|student|phone|login|用户名|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' '))) || users[0];
+            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) :
+              [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')]
+              .filter(e => e.getClientRects().length > 0).find(e => e.type === 'submit' ||
+                /^(登录|登陆|认证|连接|login|signin|connect)$/i.test((e.innerText || e.value || '').replace(/\s+/g,'')));
+          } catch (_) { return 'invalid-selector'; }
+          if (!editable(user) || !editable(pass) || !visible(user) || !visible(pass) || !user.value || !pass.value) return 'missing-fields';
+          /*CAPTCHA*/
+          return 'captcha-not-found';
+        })()
+        """.Replace("/*CONFIG*/", payload, StringComparison.Ordinal).Replace("  /*CAPTCHA*/", reader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
+    }
+
     public static string Build(CampusProfile profile, string password, bool statusOnly = false)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
@@ -105,7 +156,11 @@ public static class PortalScript
         using var agreementStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalAgreements.js")
             ?? throw new InvalidOperationException("缺少登录勾选脚本。");
         using var agreementReader = new StreamReader(agreementStream);
+        using var captchaStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
+            ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
+        using var captchaReader = new StreamReader(captchaStream);
         return reader.ReadToEnd().Replace("/*CAMPUS_CONFIG*/", payload, StringComparison.Ordinal)
+            .Replace("  /*CAMPUS_CAPTCHA*/", captchaReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_AGREEMENTS*/", agreementReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
     }
 }

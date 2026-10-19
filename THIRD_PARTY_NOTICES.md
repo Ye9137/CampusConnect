@@ -6,6 +6,7 @@ CampusConnect 自有代码按根目录的 MIT 许可证发布。以下依赖与�
 | --- | --- | --- |
 | .NET / Windows Forms | Windows 应用及随安装包分发的运行时 | https://github.com/dotnet/runtime/blob/main/LICENSE.TXT · https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT · https://github.com/dotnet/winforms/blob/main/LICENSE.TXT |
 | Microsoft WebView2 SDK / Runtime | Windows 内嵌浏览器；Runtime 由 Microsoft 安装程序提供 | https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4258.31 （License Info） |
+| Microsoft.Windows.SDK.NET.Ref / WinRT.Runtime | Windows 系统 OCR 的 .NET 投影与互操作支持 | https://www.nuget.org/packages/Microsoft.Windows.SDK.NET.Ref/10.0.19041.57 · https://aka.ms/WinSDKLicenseURL |
 | NSIS | Windows 安装器构建 | https://nsis.sourceforge.io/License |
 | Playwright | 开发及浏览器测试，不随应用分发 | https://github.com/microsoft/playwright/blob/main/LICENSE |
 | Apple 系统框架 | macOS 原生界面、网络和浏览器组件 | 由 macOS 提供，适用 Apple 对应 SDK / 系统条款 |

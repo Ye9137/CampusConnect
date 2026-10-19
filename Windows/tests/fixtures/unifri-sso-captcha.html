@@ -1,0 +1,21 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"></head><body>
+<!-- Structure reproduced from the public SSO page. No school scripts or endpoint. -->
+<form class="ant-form">
+  <nz-input-group><input type="text" formcontrolname="username" placeholder="用户名"></nz-input-group>
+  <nz-input-group><input type="password" formcontrolname="password" placeholder="密码"></nz-input-group>
+  <div id="challenge-slot"></div>
+  <button type="submit"><span> 登录 </span></button>
+</form>
+<script>
+window.loginCalls=0;window.codes=[];
+document.querySelector('form').onsubmit=e=>{e.preventDefault();loginCalls++;codes.push(document.querySelector('[formcontrolname=captcha]')?.value||'')};
+window.mountCaptcha=()=>{
+ document.querySelector('#challenge-slot').innerHTML=`<nz-input-group class="ant-input-group-wrapper">
+ <span class="ant-input-wrapper ant-input-group"><span class="ant-input-affix-wrapper">
+ <input type="text" formcontrolname="captcha" placeholder="验证码"></span>
+ <span class="ant-input-group-addon"><img style="height:32px" class="ng-star-inserted"></span></span></nz-input-group>`;
+ const canvas=document.createElement('canvas');canvas.width=120;canvas.height=40;
+ const x=canvas.getContext('2d');x.fillStyle='white';x.fillRect(0,0,120,40);x.fillStyle='black';x.font='30px monospace';x.fillText('8042',8,32);
+ document.querySelector('img').src=canvas.toDataURL();
+};
+</script></body></html>

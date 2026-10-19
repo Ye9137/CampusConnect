@@ -111,10 +111,14 @@ Expect(!policy.ShouldJoin(false, "HNPI-STU", null, ["HNPI-STU"], false, now), "p
 Expect(!policy.ShouldJoin(true, "HNPI-STU", "HNPI-STU", ["HNPI-STU"], false, now), "already connected");
 Expect(!policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], true, now), "busy guard");
 policy.Begin(now);
-Expect(!policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], false, now.AddSeconds(59)), "cooldown");
-Expect(policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], false, now.AddSeconds(61)), "retry interval");
+Expect(!policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], false, now.AddMilliseconds(999)), "no Wi-Fi retry before one second");
+Expect(policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], false, now.AddSeconds(1)), "Wi-Fi retry at one second");
+Expect(!policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], true, now.AddSeconds(1)), "one-second polling does not overlap a join");
+Expect(!policy.ShouldJoin(true, "HNPI-STU", null, [], false, now.AddSeconds(1)), "startup waits for target to appear");
+Expect(!policy.ShouldPrepareWired(true, true, false, now.AddSeconds(59)), "system authentication keeps its cooldown");
+Expect(policy.ShouldPrepareWired(true, true, false, now.AddSeconds(60)), "system authentication retries at sixty seconds");
 for (var i = 1; i <= 1000; i++) {
-    var retryAt = now.AddSeconds(60 * i);
+    var retryAt = now.AddSeconds(i);
     Expect(policy.ShouldJoin(true, "HNPI-STU", null, ["HNPI-STU"], false, retryAt), "Wi-Fi retries without a failure limit");
     policy.Begin(retryAt);
 }
@@ -137,7 +141,22 @@ Expect(json.RootElement.GetProperty("password").GetString() == secret, "credenti
 Expect(json.RootElement.GetProperty("serviceOption").GetString() == secret, "service option JSON escaping");
 Expect(!script.Contains("/*CAMPUS_CONFIG*/"), "embedded resource substituted");
 Expect(!script.Contains("/*CAMPUS_AGREEMENTS*/") && script.Contains("__campusAgreementAttempts"), "Windows agreement resource injected into generated script");
-if (args.Length == 1) File.WriteAllText(args[0], script);
+Expect(!script.Contains("/*CAMPUS_CAPTCHA*/") && script.Contains("captcha-required"), "Windows captcha resource injected into generated script");
+var probe = PortalScript.BuildCaptchaProbe(profile with { PortalUrl = "http://portal.test", Username = "not-in-probe" });
+Expect(!probe.Contains("/*CAPTCHA*/") && probe.Contains("captcha-required"), "standalone captcha probe embeds helper");
+Expect(!probe.Contains("not-in-probe") && !probe.Contains(secret), "standalone captcha probe contains no saved credentials");
+var imageScript = PortalScript.BuildCaptchaImage(profile with { PortalUrl = "http://portal.test" }, "fixture-image");
+Expect(!imageScript.Contains("/*RESPONSE*/") && !imageScript.Contains(secret), "response image bridge excludes saved credentials");
+await CaptchaResponseTests.RunAsync(Expect);
+if (args.Length >= 1) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0]))!); File.WriteAllText(args[0], script); }
+if (args.Length >= 2) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[1]))!); File.WriteAllText(args[1], probe); }
+if (args.Length >= 3) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[2]))!); File.WriteAllText(args[2], imageScript); }
+if (args.Length >= 4) {
+    foreach (var file in Directory.EnumerateFiles(args[3], "*.json")) {
+        using var response = File.OpenRead(file);
+        Expect(await PortalCaptchaResponse.ReadAsync(response) is not null, "local image-only response replay accepted");
+    }
+}
 
 Expect(DesktopBridge.IsTrustedSource("https://campusconnect-ui.invalid/"), "trust exact embedded UI");
 Expect(!DesktopBridge.IsTrustedSource("http://campusconnect-ui.invalid/"), "reject insecure UI origin");

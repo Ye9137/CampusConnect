@@ -44,7 +44,7 @@
       .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
     if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
     submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton ||
-      [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(visible)
+      [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
         .find(e => e.type === 'submit' || /^(登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim()));
   } catch (_) { return 'invalid-selector'; }
   if (!available(user) || !available(pass)) return 'missing-fields';
@@ -197,6 +197,7 @@
   // School handlers can reject/reset a value; never report success or submit it.
   if (!editable(user) || !editable(pass) || !visible(user) || !visible(pass) ||
       user.value !== cfg.username || pass.value !== cfg.password) return 'missing-fields';
+  /*CAMPUS_CAPTCHA*/
   if (!cfg.submit) return 'filled';
   if (!visible(submit)) return 'missing-submit';
   if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&

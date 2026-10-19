@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test core and native layouts
-        run: dotnet run --project Windows/tests -c Release
+        run: dotnet run --project Windows/tests -c Release -- Windows/work/generated-login-script.js Windows/work/captcha-probe.js Windows/work/captcha-image.js
       - name: Test browser automation
         run: node Windows/tests/portal.test.mjs
       - name: Test desktop pages
@@ -57,7 +57,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Playwright installation failed.' }
           npx --prefix Windows/tests playwright install chromium
           if ($LASTEXITCODE -ne 0) { throw 'Chromium installation failed.' }
-          foreach ($test in @('desktop', 'wired', 'agreements', 'recovery', 'eportal', 'portal-early', 'performance')) {
+          foreach ($test in @('desktop', 'wired', 'agreements', 'recovery', 'eportal', 'portal-early', 'performance', 'captcha', 'sso-captcha')) {
             node "Windows/tests/$test.test.cjs"
             if ($LASTEXITCODE -ne 0) { throw "$test tests failed." }
           }

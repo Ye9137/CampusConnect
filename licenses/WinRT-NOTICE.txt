@@ -1,0 +1,9 @@
+Microsoft.Windows.SDK.NET.Ref 10.0.19041.57
+Copyright Microsoft Corporation. All rights reserved.
+
+This Windows build uses Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll
+from Microsoft's Windows SDK for .NET targeting pack to call the system OCR API.
+Package information: https://www.nuget.org/packages/Microsoft.Windows.SDK.NET.Ref/10.0.19041.57
+Microsoft Windows SDK license: https://aka.ms/WinSDKLicenseURL
+
+The Windows OCR engine itself is supplied by the operating system.
