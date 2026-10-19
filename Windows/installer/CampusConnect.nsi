@@ -22,7 +22,7 @@ Unicode true
   !define RUNTIME "win-x64"
 !endif
 !ifndef VERSION
-  !define VERSION "2.0.3-local.6"
+  !define VERSION "2.0.3-local.7"
 !endif
 !ifndef SIZE_KB
   !define SIZE_KB 0
@@ -44,7 +44,7 @@ SetCompressor /FINAL zlib
 ShowInstDetails show
 ShowUninstDetails show
 BrandingText "By Ye · MIT 开源软件"
-VIProductVersion "2.0.3.6"
+VIProductVersion "2.0.3.7"
 !define MUI_ICON "../source/AppIcon.ico"
 !define MUI_UNICON "../source/AppIcon.ico"
 VIAddVersionKey /LANG=2052 "ProductName" "校园 Wi-Fi 助手安装程序"

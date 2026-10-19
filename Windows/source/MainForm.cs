@@ -29,6 +29,9 @@ internal sealed partial class MainForm : Form
     private bool pageTransitioning;
     private string lastScan = "";
     private bool busy, joining, checking, exiting, uiReady, permissionNeeded, stateQueued;
+    private bool backgroundRefreshing;
+    private Task? backgroundRefreshTask;
+    private string? lastStateJson;
     private Task<CoreWebView2Environment>? browserEnvironment;
     private Task<(CampusProfile Profile, string Password)>? configurationLoad;
     private bool? online;
@@ -83,8 +86,12 @@ internal sealed partial class MainForm : Form
             await Task.Delay(1000);
             if (!IsDisposed && expected == generation) await SafeAsync(() => CheckInternetAsync(false));
         };
-        timer.Tick += async (_, _) => await RefreshAsync(scan: currentSsid != saved.Ssid &&
-            DateTimeOffset.UtcNow - lastWifiScan >= AutoPolicy.WifiScanInterval, waitForScan: false);
+        timer.Tick += async (_, _) => {
+            if (busy || backgroundRefreshTask is { IsCompleted: false }) return;
+            backgroundRefreshTask = RefreshAsync(scan: currentSsid != saved.Ssid &&
+                DateTimeOffset.UtcNow - lastWifiScan >= AutoPolicy.WifiScanInterval, waitForScan: false, background: true);
+            await backgroundRefreshTask;
+        };
         InitializeBrowserRecovery();
         Activated += (_, _) => { if (uiReady) PushStartup(); };
         Shown += async (_, _) => {
@@ -162,13 +169,23 @@ internal sealed partial class MainForm : Form
     private async Task HandleCommandAsync(JsonElement message)
     {
         if (!message.TryGetProperty("command", out var property)) return;
-        switch (property.GetString()) {
+        var command = property.GetString();
+        // Background reads leave controls usable. Honor a click after the active
+        // read finishes instead of rejecting it as a competing scan/connection.
+        if (command is "refresh" or "connect" or "save" ||
+            command == "setAutomatic" && message.GetProperty("enabled").GetBoolean()) {
+            if (backgroundRefreshing && backgroundRefreshTask is { IsCompleted: false } pending)
+                await pending;
+            if (IsDisposed || Disposing) return;
+        }
+        switch (command) {
             case "ready":
                 if (uiReady) break;
                 var firstReady = !configurationLoaded;
                 try { if (firstReady && configurationLoad is not null) (saved, savedPassword) = await configurationLoad; }
                 catch (Exception ex) { Record("无法读取配置，请重新填写并保存：" + ex.Message); }
                 configurationLoaded = true;
+                lastStateJson = null;
                 uiReady = true; PushProfile(); PushStartup(); SendState();
                 Post(new { kind = "restore", page, snapshot = shellSnapshot });
                 if (!firstReady) break;
@@ -284,8 +301,9 @@ internal sealed partial class MainForm : Form
     private void SendState()
     {
         var connectionLabel = saved.ConnectionLabel;
-        Text = "校园网助手 · " + connectionLabel;
-        tray.Text = Text;
+        var windowTitle = "校园网助手 · " + connectionLabel;
+        if (Text != windowTitle) Text = windowTitle;
+        if (tray.Text != windowTitle) tray.Text = windowTitle;
         var connected = saved.MatchesNetwork(currentSsid, saved.IsWired && CampusNetwork.ReadWiredInterface(saved) is not null);
         var title = saved.IsWired ? (connected ? (online == true ? "有线校园网已连接 · 可上网" : online == false ? "有线网络已连接 · 未联网" : "有线网络已连接 · 正在确认上网状态") : "有线网络未连接，请插好网线") : joining ? "正在连接校园网" : permissionNeeded ? "等待 Wi-Fi 访问授权" :
             connected ? (online == true ? "校园网已连接 · 可上网" : online == false ? "Wi-Fi 已连接 · 未联网" : "Wi-Fi 已连接 · 正在确认上网状态") :
@@ -293,14 +311,18 @@ internal sealed partial class MainForm : Form
         if (saved.IsWired && saved.UsesSystemAuthentication) title = joining ? "正在连接 · " + saved.ConnectionLabel
             : wiredInterface is null ? "有线网络未连接，请插好网线"
             : online == true && connected ? saved.ConnectionLabel + " · 可上网" : saved.ConnectionLabel + " · 等待认证或联网确认";
-        Post(new { kind = "state", state = new {
+        var message = new { kind = "state", state = new {
             target = saved.IsWired ? "有线网络" : saved.Ssid, wiredMode = saved.IsWired, currentSsid, campusConnected = connected, internetOnline = connected && online == true, connectionTitle = title,
             wiredAuth = saved.WiredAuth, connectionLabel = saved.ConnectionLabel, webPortalEnabled = saved.UsesWebPortal,
             ethernetAdapters, broadbandEntries,
-            automatic = saved.Automatic, busy, permissionNeeded, lastScan, status,
+            automatic = saved.Automatic, busy = joining || busy && !backgroundRefreshing, permissionNeeded, lastScan, status,
             portalStatus, portalAddress = portal.Address,
             networks = networks.DistinctBy(n => n.Ssid).Select(n => new { n.Ssid, n.Signal, n.Secure }).ToArray()
-        }});
+        }};
+        var serialized = JsonSerializer.Serialize(message, JsonOptions);
+        if (serialized == lastStateJson) return;
+        lastStateJson = serialized;
+        Post(message);
     }
     private void Navigate(string target) { page = target; UpdatePortalVisibility(); Post(new { kind = "page", page = target }); }
     private void SaveFromMessage(JsonElement message, bool? enable = null)
@@ -344,10 +366,11 @@ internal sealed partial class MainForm : Form
             Record(ex.Message);
         }
     }
-    private async Task RefreshAsync(bool scan = true, bool waitForScan = true)
+    private async Task RefreshAsync(bool scan = true, bool waitForScan = true, bool background = false)
     {
         if (busy || IsDisposed) return;
-        busy = true; PushState();
+        busy = true; backgroundRefreshing = background;
+        if (!background) PushState();
         try {
             await SafeAsync(async () => {
                 var expected = generation;
@@ -378,7 +401,7 @@ internal sealed partial class MainForm : Form
                     Record($"正在等待 {saved.Ssid}，每 1 秒检查一次。");
                 }
             });
-        } finally { busy = false; PushState(); }
+        } finally { backgroundRefreshing = false; busy = false; PushState(); }
     }
     private void RefreshWiredConnection()
     {
