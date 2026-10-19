@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><style>
+body{background:#147eaf;font:18px sans-serif;color:white;padding:40px}input{display:block;margin:8px 0}
+#serviceShowHideTop{background:white;color:#444;width:240px;padding:8px;cursor:pointer}
+#serviceShowHide{position:absolute;z-index:2;background:#eee;color:#444;width:256px}#serviceShowHide>div{padding:10px;cursor:pointer}
+#loginLink{display:block;margin-top:12px;background:#ffe04c;color:#222;width:240px;padding:10px;text-align:center}
+</style><h3>连接网络 · 离线模拟</h3><input id="username"><input id="pwd" type="password">
+<input type="hidden" id="net_access_type" value="mobile"><div id="serviceShowHideTop" aria-expanded="false"><span id="selectDisname">移动</span> ▾</div>
+<div id="serviceShowHide" style="display:none"><div id="bch_service_0"><div id="_service_0">移动</div></div><div id="bch_service_1"><div id="_service_1">电信</div></div><div id="bch_service_2"><div id="_service_2">联通</div></div><div id="bch_service_3"><div id="_service_3">校内网</div></div></div>
+<a id="loginLink">连接</a><div id="unrelated" role="menu">其他菜单</div><script>
+window.clicks=0;window.serviceEvents=0;
+loginLink.onclick=()=>clicks++;
+serviceShowHideTop.onclick=function(){const open=getComputedStyle(serviceShowHide).display==='none';serviceShowHide.style.display=open?'block':'none';this.setAttribute('aria-expanded',String(open))};
+for(const [i,name] of ['移动','电信','联通','校内网'].entries()) document.getElementById('bch_service_'+i).onclick=function(){
+  serviceEvents++;if(window.rejectChoice)return;net_access_type.value=String(i);selectDisname.textContent=name;
+  // Deliberately broken school handler: updates selection but leaves menu open.
+};
+</script>

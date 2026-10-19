@@ -317,7 +317,7 @@ internal sealed partial class MainForm : Form
             target = saved.IsWired ? "有线网络" : saved.Ssid, wiredMode = saved.IsWired, currentSsid, campusConnected = connected, internetOnline = connected && online == true, connectionTitle = title,
             wiredAuth = saved.WiredAuth, connectionLabel = saved.ConnectionLabel, webPortalEnabled = saved.UsesWebPortal,
             ethernetAdapters, broadbandEntries,
-            automatic = saved.Automatic, busy = joining || busy && !backgroundRefreshing, permissionNeeded, lastScan, status,
+            automatic = saved.Automatic, busy = DesktopBridge.ControlsBusy(busy, backgroundRefreshing), permissionNeeded, lastScan, status,
             portalStatus, portalAddress = portal.Address,
             networks = networks.DistinctBy(n => n.Ssid).Select(n => new { n.Ssid, n.Signal, n.Secure }).ToArray()
         }};

@@ -164,7 +164,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
       <div class="portal-slot" id="portal-slot"><div class="hint"><i data-icon="globe"></i><p>学校认证页面将在这里打开<br><span id="portal-connection-hint">请先连接已设置的校园 Wi-Fi</span></p></div></div>
     </section>
   </div>
-  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.0 · Windows</span></footer>
+  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.1 · Windows</span></footer>
 </main>
 </div>
 <script>
@@ -279,6 +279,7 @@ function snapshot() {
 function checkpoint() {post('draft',{snapshot:snapshot()});}
 function textNode(tag,text,className) { const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e; }
 function setText(id,value) {const e=byId(id);if(e.textContent!==value)e.textContent=value;}
+function setDisabled(element,value) {value=!!value;if(element.disabled!==value)element.disabled=value;}
 function setIcon(id,key) {
  const e=byId(id);if(e.dataset.icon===key)return;
  e.dataset.icon=key;e.innerHTML=svg(key);
@@ -298,13 +299,13 @@ function update(s) {
  const descriptions={web:'接入有线网络后，使用已保存账号进行网页认证。',pppoe:'接入有线网络后，拨打所选 Windows 宽带连接。',dot1x:'接入有线网络后，按系统配置发起 802.1X 认证。',client:'接入有线网络后，打开所选学校客户端并检测联网状态。'};
  setText('auto-description',s.wiredMode?descriptions[s.wiredAuth||'web']:`发现 ${s.target||''} 后连接，并使用已保存账号登录。`);
  setText('network-heading',s.wiredMode?'有线模式':'附近网络');byId('automatic').checked=s.automatic;
- byId('automatic').disabled=s.busy;byId('busy').hidden=!s.busy;byId('permission-card').hidden=s.wiredMode||!s.permissionNeeded;
+ setDisabled(byId('automatic'),s.busy);byId('busy').hidden=!s.busy;byId('permission-card').hidden=s.wiredMode||!s.permissionNeeded;
  byId('status-dot').classList.toggle('online',s.internetOnline===true);
  byId('status-dot').hidden = !s.status;
- byId('scan-time').textContent=s.lastScan?'更新于 '+s.lastScan:'';
- document.querySelectorAll('[data-action="refresh"],[data-action="connect"],#save,#save-enable').forEach(e=>e.disabled=s.busy);
- document.querySelectorAll('[data-campus]').forEach(e=>e.disabled=!s.campusConnected||s.busy);
- document.querySelectorAll('[data-webportal]').forEach(e=>e.disabled=s.webPortalEnabled===false||!s.campusConnected||s.busy);
+ setText('scan-time',s.lastScan?'更新于 '+s.lastScan:'');
+ document.querySelectorAll('[data-action="refresh"],[data-action="connect"],#save,#save-enable').forEach(e=>setDisabled(e,s.busy));
+ document.querySelectorAll('[data-campus]').forEach(e=>setDisabled(e,!s.campusConnected||s.busy));
+ document.querySelectorAll('[data-webportal]').forEach(e=>setDisabled(e,s.webPortalEnabled===false||!s.campusConnected||s.busy));
  const choicesKey=JSON.stringify([s.ethernetAdapters||[],s.broadbandEntries||[]]);
  if(choicesKey!==systemChoicesKey){
    systemChoicesKey=choicesKey;
@@ -322,25 +323,55 @@ function renderActivePage() {
 }
 function renderNetworks(s) {
  const key=JSON.stringify([s.target,s.wiredMode,s.currentSsid,s.permissionNeeded,s.networks||[]]);
- if(key===networkRenderKey){byId('networks').querySelectorAll('button').forEach(e=>e.disabled=!!s.busy);return;}
+ const list=byId('networks');
+ if(key===networkRenderKey){list.querySelectorAll('button').forEach(e=>setDisabled(e,s.busy));return;}
  networkRenderKey=key;
- const list=byId('networks');list.replaceChildren();
  if(s.wiredMode||!s.networks?.length) {
-   const empty=document.createElement('div');empty.className='network-empty';empty.innerHTML=svg(s.wiredMode?'network':'antenna');
-   empty.append(textNode('div',s.wiredMode?'接好网线并启用以太网后，即可进行上网认证。':s.permissionNeeded?'授权定位后显示真实网络列表':'点击刷新扫描附近网络'));list.append(empty);
- } else for(const n of s.networks) {
-   const row=document.createElement('div');row.className='network-row'+(n.ssid===s.target?' target-network':'');
-   const icon=document.createElement('span');icon.className='wifi-icon';icon.innerHTML=svg('wifi');row.append(icon);
-   const body=document.createElement('div');body.className='grow';const name=textNode('div',n.ssid,'network-title');
-   if(n.ssid===s.target)name.append(textNode('span','校园网','badge'));
-   body.append(name,textNode('div',(n.secure?'加密':'开放')+' · '+n.signal+'%','network-subtitle'));row.append(body);
-   if(n.ssid===s.currentSsid)row.append(textNode('span','已连接','connected'));
-   const button=textNode('button','设为目标');button.disabled=s.busy;button.addEventListener('click',()=>{
-     if(byId('ssid').value!==n.ssid){byId('username').value='';byId('password').value='';byId('serviceOption').value='';}
-     byId('ssid').value=n.ssid;setMode(n.secure?'saved':'open');dirty=true;checkpoint();go('settings');
-   });row.append(button);list.append(row);
+   const message=s.wiredMode?'接好网线并启用以太网后，即可进行上网认证。':s.permissionNeeded?'授权定位后显示真实网络列表':'点击刷新扫描附近网络';
+   const existing=list.querySelector('.network-empty');
+   if(existing&&existing.dataset.mode===String(!!s.wiredMode)){if(existing.lastElementChild.textContent!==message)existing.lastElementChild.textContent=message;return;}
+   const empty=document.createElement('div');empty.className='network-empty';empty.dataset.mode=String(!!s.wiredMode);empty.innerHTML=svg(s.wiredMode?'network':'antenna');
+   empty.append(textNode('div',message));list.replaceChildren(empty);return;
+ }
+ // Update each SSID in place. Signal and connection changes must not recreate
+ // its button, discard keyboard focus, or restart hover/pressed rendering.
+ const rows=new Map([...list.querySelectorAll('.network-row')].map(row=>[row.dataset.ssid,row]));
+ const keep=new Set(s.networks.map(n=>n.ssid));
+ for(const child of [...list.children])if(!keep.has(child.dataset.ssid))child.remove();
+ let index=0;
+ for(const n of s.networks) {
+   let row=rows.get(n.ssid);
+   if(!row){
+     row=document.createElement('div');row.className='network-row';row.dataset.ssid=n.ssid;
+     const icon=document.createElement('span');icon.className='wifi-icon';icon.innerHTML=svg('wifi');row.append(icon);
+     const body=document.createElement('div');body.className='grow';
+     const name=textNode('div','', 'network-title');name.append(textNode('span',n.ssid,'network-name'));
+     body.append(name,textNode('div','','network-subtitle'));row.append(body);
+     const button=textNode('button','设为目标'),ssid=n.ssid;
+     button.addEventListener('click',()=>{
+       if(byId('ssid').value!==ssid){byId('username').value='';byId('password').value='';byId('serviceOption').value='';}
+       byId('ssid').value=ssid;setMode(row.dataset.secure==='true'?'saved':'open');dirty=true;checkpoint();go('settings');
+     });row.append(button);
+   }
+   row.dataset.secure=String(!!n.secure);
+   const target=n.ssid===s.target,name=row.querySelector('.network-title');
+   if(row.classList.contains('target-network')!==target)row.classList.toggle('target-network',target);
+   if(target&&!name.querySelector('.badge'))name.append(textNode('span','校园网','badge'));
+   else if(!target)name.querySelector('.badge')?.remove();
+   const subtitle=row.querySelector('.network-subtitle'),text=(n.secure?'加密':'开放')+' · '+n.signal+'%';
+   if(subtitle.textContent!==text)subtitle.textContent=text;
+   const button=row.querySelector('button'),connected=row.querySelector('.connected');
+   if(n.ssid===s.currentSsid&&!connected)row.insertBefore(textNode('span','已连接','connected'),button);
+   else if(n.ssid!==s.currentSsid)connected?.remove();
+   setDisabled(button,s.busy);
+   if(list.children[index]!==row){
+     if(row.parentNode===list&&list.moveBefore)list.moveBefore(row,list.children[index]||null);
+     else{const focused=row.contains(document.activeElement)?document.activeElement:null;list.insertBefore(row,list.children[index]||null);focused?.focus({preventScroll:true});}
+   }
+   index++;
  }
 }
+
 function receive(message) {
  if(message.kind==='state')update(message.state);
  if(message.kind==='startup'){

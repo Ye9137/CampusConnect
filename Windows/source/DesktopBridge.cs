@@ -4,6 +4,10 @@ namespace CampusConnect;
 
 public static class DesktopBridge
 {
+    // Background polling and automatic reconnects serialize native work without
+    // repeatedly disabling the user interface. Explicit user operations still lock.
+    public static bool ControlsBusy(bool operationRunning, bool backgroundRefresh) => operationRunning && !backgroundRefresh;
+
     public const string Uri = "https://campusconnect-ui.invalid/";
     // A school page must never be allowed to issue native commands or read the settings UI.
     public static bool IsTrustedSource(string? source) => string.Equals(source, Uri, StringComparison.Ordinal);

@@ -102,6 +102,9 @@
       (servicePlaceholder(serviceText(control)) || window.__campusCustomServiceMenus?.has(control) ||
         (control.matches('[role="combobox"],[aria-haspopup]') &&
           (serviceText(control) === serviceName || /运营商|服务|operator|carrier|service/i.test(serviceDescriptor(control))))));
+  for (const opener of serviceOpeners) window.__campusRegisterServiceMenu?.(opener);
+  const eportalOpener = document.querySelector('#serviceShowHideTop');
+  window.__campusRegisterServiceMenu?.(eportalOpener);
   if (!serviceName && (serviceSelects.some(select => servicePlaceholder(select.selectedOptions[0]?.textContent)) ||
       serviceOpeners.some(control => servicePlaceholder(serviceText(control))))) {
     return 'service-required';
@@ -127,6 +130,7 @@
         choices[0].click();
         if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return 'missing-service';
       }
+      window.__campusCollapseServiceMenu?.(eportalOpener);
     } else {
       // Operator choices can also be horizontal native or accessible radios,
       // including controls placed above and outside the credentials form.
@@ -183,6 +187,7 @@
           select.dispatchEvent(new Event('change', {bubbles:true}));
         }
         if (select.selectedOptions[0] !== option || select.disabled) return 'missing-service';
+        select.blur();
       } else {
         // Custom portals may create their choices only after opening the menu.
         // Match the configured visible name, without a fixed carrier/value list.
@@ -208,6 +213,7 @@
           if (serviceText(opener) !== serviceName && options[0].getAttribute('aria-selected') !== 'true' &&
               options[0].getAttribute('aria-checked') !== 'true') return 'missing-service';
         }
+        window.__campusCollapseServiceMenu?.(opener);
       }
     }
   }

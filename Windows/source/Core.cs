@@ -93,8 +93,64 @@ public sealed class PortalRecovery
     public void Reset() { Failures = 0; Attempts = 0; LastAttempt = DateTimeOffset.MinValue; State = InternetStatus.Unavailable; }
 }
 
+public enum PortalNavigationDecision { Allowed, Redirected, External, Invalid, Loop, Expired }
+
+// An entry URL is not necessarily the login origin. Follow only the initial
+// automatic navigation chain, then pin it before any saved credentials are used.
+// This state is per attempt; dynamic portal query strings are never saved.
+public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset started)
+{
+    private readonly HashSet<string> visited = new(StringComparer.Ordinal);
+    public string CurrentUrl { get; private set; } = entryUrl;
+    public bool Pinned { get; private set; }
+    public bool Blocked { get; private set; }
+    public void Pin() => Pinned = true;
+
+    public PortalNavigationDecision Navigate(string url, bool userInitiated, bool redirected, DateTimeOffset now)
+    {
+        var origin = CampusProfile.Origin(url);
+        if (origin is null) { Blocked = true; return PortalNavigationDecision.Invalid; }
+        var sameOrigin = origin == CampusProfile.Origin(CurrentUrl);
+        if (Blocked || (!sameOrigin && (Pinned || (userInitiated && !redirected)))) {
+            Blocked = true; return PortalNavigationDecision.External;
+        }
+        if (!Pinned) {
+            if (now - started > TimeSpan.FromSeconds(30)) { Blocked = true; return PortalNavigationDecision.Expired; }
+            var uri = new Uri(url);
+            var key = uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
+            if (visited.Count >= 10 || !visited.Add(key)) { Blocked = true; return PortalNavigationDecision.Loop; }
+            if (new Uri(CurrentUrl).Scheme == "https" && uri.Scheme != "https") {
+                Blocked = true; return PortalNavigationDecision.External;
+            }
+        }
+        CurrentUrl = url;
+        return sameOrigin ? PortalNavigationDecision.Allowed : PortalNavigationDecision.Redirected;
+    }
+}
+
 public static class PortalScript
 {
+    // No credentials: intermediate redirect/loading pages must not pin the chain.
+    public static string LoginFormProbe(CampusProfile profile)
+    {
+        var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = profile.PasswordSelector });
+        return """
+        (() => {
+          const cfg = /*PROBE*/;
+          if (location.origin !== cfg.origin || document.readyState === 'loading') return false;
+          try {
+            const inputs = document.querySelectorAll(cfg.passwordSelector || 'input[type="password"]');
+            return [...inputs].some(input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly &&
+              (input.getClientRects().length > 0 ||
+               (input.id === 'pwd' && document.querySelector('#pwd_tip')?.getClientRects().length > 0) ||
+               (input.id === 'password' && input.form?.id === 'login_form' &&
+                input.form.querySelector('#user_name[name="username"]') && input.form.querySelector('#login_submit') &&
+                input.form.querySelector('input#tx[type="text"]')?.getClientRects().length > 0)));
+          } catch (_) { return true; } // Let the normal script report invalid selectors.
+        })()
+        """.Replace("/*PROBE*/", config, StringComparison.Ordinal);
+    }
+
     public static string BuildCaptchaImage(CampusProfile profile, string image)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");

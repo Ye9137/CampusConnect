@@ -9,6 +9,23 @@ void Invalid(CampusProfile profile) {
     try { profile.Validate(); } catch (InvalidOperationException) { checks++; return; }
     throw new Exception("Invalid profile accepted.");
 }
+PortalRedirectTests.Run(Expect);
+Expect(!DesktopBridge.ControlsBusy(true, true), "background poll keeps every control usable");
+Expect(!DesktopBridge.ControlsBusy(false, false), "idle controls remain usable");
+Expect(DesktopBridge.ControlsBusy(true, false), "explicit scan and connect retain the operation lock");
+if (args.Length == 2 && args[0] == "--redirect-fixture") {
+    var landing = PortalRedirectTests.LandingProfile(Expect);
+    var entry = landing with { PortalUrl = "http://1.1.1.1" };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        finalUrl = landing.PortalUrl,
+        probe = PortalScript.LoginFormProbe(landing),
+        entryProbe = PortalScript.LoginFormProbe(entry),
+        fill = PortalScript.Build(landing, "fixture-password"),
+        wrongOriginFill = PortalScript.Build(entry, "fixture-password")
+    }));
+    Console.WriteLine($"PASS: {checks} redirect checks; browser fixture generated.");
+    return;
+}
 var profile = new CampusProfile(); profile.Validate();
 Expect(profile.ServiceOption == "", "service selection defaults to blank");
 var serviceProfile = JsonSerializer.Deserialize<CampusProfile>(JsonSerializer.Serialize(profile with { ServiceOption = "联通接入服务" }))!;

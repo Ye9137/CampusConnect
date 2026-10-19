@@ -27,6 +27,10 @@ internal sealed class PortalController
     private bool finished;
     private int fillingGeneration = -1;
     private string? bootstrapId;
+    private string bootstrapSource = "";
+    private PortalRedirectSession? redirectSession;
+    private bool discovering;
+    private ulong navigationId;
     private DateTimeOffset? authenticationDeadline;
     private int observingGeneration = -1;
     private int captchaHandlingGeneration = -1;
@@ -68,16 +72,35 @@ internal sealed class PortalController
         view.CoreWebView2.WebResourceResponseReceived += async (_, e) => await CaptureCaptchaImageAsync(view, e);
         View.CoreWebView2.NavigationStarting += async (_, e) => {
             generation++;
+            navigationId = e.NavigationId;
             if (e.Uri != "about:blank" && CampusProfile.Origin(e.Uri) is null) e.Cancel = true;
-            if (profile != null && CampusProfile.Origin(e.Uri) != CampusProfile.Origin(profile.PortalUrl))
-                Status?.Invoke("页面地址已改变，暂停自动填写；确认学校网址后在设置中更新。");
+            if (IsActive && profile is not null && redirectSession is not null) {
+                var decision = redirectSession.Navigate(e.Uri, e.IsUserInitiated, e.IsRedirected, DateTimeOffset.UtcNow);
+                if (decision is PortalNavigationDecision.Allowed or PortalNavigationDecision.Redirected) {
+                    profile = profile with { PortalUrl = redirectSession.CurrentUrl };
+                    if (decision == PortalNavigationDecision.Redirected)
+                        Status?.Invoke("正在跟随校园认证入口跳转…");
+                } else {
+                    // Latch interaction so the outer recovery timer cannot reopen
+                    // the same entry URL and repeat the mismatch indefinitely.
+                    RequiresInteraction = true; finished = true; password = "";
+                    if (decision is not PortalNavigationDecision.External) e.Cancel = true;
+                    Status?.Invoke(decision is PortalNavigationDecision.Loop or PortalNavigationDecision.Expired
+                        ? "认证入口反复跳转或等待超时，已暂停自动重试。请查看学校页面后点击立即认证重试。"
+                        : "页面离开了本次认证地址，已暂停自动填写和重试。请确认学校页面后使用当前地址。");
+                }
+            }
             if (authenticationDeadline != null) { await Task.Delay(100); await ObserveAuthenticationAsync(); }
         };
         View.CoreWebView2.ContentLoading += async (_, _) => await TryFillAsync();
         View.CoreWebView2.DOMContentLoaded += async (_, _) => await TryFillAsync();
         View.CoreWebView2.NavigationCompleted += async (_, e) => {
-            if (profile is null) return;
-            if (!e.IsSuccess) { Status?.Invoke($"认证页加载失败：{e.WebErrorStatus}。可先断开 VPN 后重试。"); return; }
+            if (profile is null || e.NavigationId != navigationId) return;
+            if (!e.IsSuccess) {
+                if (redirectSession?.Blocked == true) return;
+                RequiresInteraction = true; finished = true; password = "";
+                Status?.Invoke($"认证页加载失败：{e.WebErrorStatus}。已暂停自动重试，请检查页面后点击立即认证。"); return;
+            }
             if (authenticationDeadline != null) await ObserveAuthenticationAsync();
             else {
                 if (await CheckAuthenticationPageAsync()) return;
@@ -122,24 +145,28 @@ internal sealed class PortalController
         if (!connected) throw new InvalidOperationException(saved.IsWired ? "请先插好网线并启用有线网络，再打开认证页。" : "请先连接已设置的校园 Wi-Fi，再打开认证页。");
         saved.Validate();
         profile = discover ? saved with { PortalUrl = "http://www.msftconnecttest.com/redirect", Username = "", AutoSubmit = false } : saved;
-        password = discover ? "" : secret; RequiresInteraction = !saved.AutoSubmit;
+        discovering = discover;
+        redirectSession = new(profile.PortalUrl, DateTimeOffset.UtcNow);
+        password = discover ? "" : secret; RequiresInteraction = discover || !saved.AutoSubmit;
         if (bootstrapId != null) View.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(bootstrapId);
         using var stream = typeof(PortalController).Assembly.GetManifestResourceStream("CampusConnect.PortalBootstrap.js")!;
         using var reader = new StreamReader(stream);
-        var bootstrap = reader.ReadToEnd().Replace("/*CAMPUS_ORIGIN*/", JsonSerializer.Serialize(CampusProfile.Origin(profile.PortalUrl)));
+        bootstrapSource = reader.ReadToEnd();
+        var bootstrap = BootstrapFor(profile);
         bootstrapId = await View.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(bootstrap);
         if (expected != generation || profile is null) return;
         IsActive = true;
         View.CoreWebView2.Navigate(profile.PortalUrl);
         Status?.Invoke(discover ? "正在探测认证地址，请确认学校页面后使用当前地址。" : "正在打开校园认证页…");
     }
+    private string BootstrapFor(CampusProfile active) => bootstrapSource.Replace("/*CAMPUS_ORIGIN*/", JsonSerializer.Serialize(CampusProfile.Origin(active.PortalUrl)));
     public void ConfirmInternetAccess()
     {
         internetConfirmed = true; RequiresInteraction = false;
         authenticationDeadline = null; finished = true; password = "";
         Status?.Invoke("已经连接成功");
     }
-    public void ReportInternetUnavailable() { internetConfirmed = false; Status?.Invoke("未连接网络"); }
+    public void ReportInternetUnavailable() { internetConfirmed = false; if (!RequiresInteraction) Status?.Invoke("未连接网络"); }
     public void ResumeView()
     {
         try {
@@ -154,6 +181,7 @@ internal sealed class PortalController
     {
         generation++;
         profile = null; password = ""; finished = false; IsActive = false;
+        redirectSession = null;
         authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false; observingGeneration = -1;
         // Never re-submit a login/captcha just because the UI browser was restarted.
         RequiresInteraction = true;
@@ -166,6 +194,7 @@ internal sealed class PortalController
     {
         generation++;
         profile = null; password = ""; finished = false; authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false;
+        redirectSession = null;
         IsActive = false; RequiresInteraction = false;
         try {
             if (View.CoreWebView2 is not null) {
@@ -241,7 +270,12 @@ internal sealed class PortalController
         if (!IsActive || fillingGeneration == expected || finished || profile is null) return;
         fillingGeneration = expected;
         try { await FillAsync(expected); }
-        catch (Exception ex) { if (expected == generation) Status?.Invoke("自动填写失败：" + ex.Message); }
+        catch (Exception ex) {
+            if (expected == generation) {
+                RequiresInteraction = true; finished = true; password = "";
+                Status?.Invoke("自动填写失败，已暂停自动重试：" + ex.Message);
+            }
+        }
         finally { if (fillingGeneration == expected) fillingGeneration = -1; }
     }
     private async Task HandleCaptchaAsync(int expected)
@@ -325,12 +359,26 @@ internal sealed class PortalController
             if (expected != generation || finished || View.IsDisposed) return;
             if (!connected) { Stop(); Status?.Invoke("校园网已断开，停止自动填写。"); return; }
             if (CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(profile.PortalUrl)) {
-                Status?.Invoke("当前页面与保存的认证地址不同，请核实后更新设置。"); return;
+                RequiresInteraction = true; finished = true; password = "";
+                Status?.Invoke("当前页面不属于本次认证跳转，已暂停自动重试，请确认学校地址。"); return;
             }
+            if (discovering) { RequiresInteraction = true; Status?.Invoke("已打开探测到的页面，请确认属于学校后使用当前地址。"); return; }
             if (profile.Username.Length == 0 || password.Length == 0) {
                 RequiresInteraction = true; Status?.Invoke("请在设置中填写上网账号密码，或直接在网页中手动登录。"); return;
             }
-            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(profile, password)));
+            // The document-start script was scoped to the saved entry origin.
+            // Install it on an approved redirect destination too, without reloads.
+            await View.CoreWebView2.ExecuteScriptAsync(BootstrapFor(activeProfile));
+            if (expected != generation || finished) return;
+            var hasForm = JsonSerializer.Deserialize<bool>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.LoginFormProbe(activeProfile)));
+            if (expected != generation || finished) return;
+            if (!hasForm) {
+                if (attempt < 80) { await Task.Delay(150); continue; }
+                RequiresInteraction = true; finished = true; password = "";
+                Status?.Invoke("入口跳转后未找到可填写的登录表单，已暂停自动重试。请等待学校页面或手动操作。"); return;
+            }
+            redirectSession?.Pin();
+            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(activeProfile, password)));
             if (expected != generation) return;
             switch (result) {
                 case "captcha-required": await HandleCaptchaAsync(expected); return;
@@ -367,7 +415,7 @@ internal sealed class PortalController
                     RequiresInteraction = true; finished = true; password = "";
                     Status?.Invoke("网页必选勾选项尚未确认，请在认证页完成协议阅读或手动勾选后重试。"); return;
                 case "manual-required": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校要求验证码或运营商信息，请在认证页补充。"); _ = WatchForCaptchaAsync(expected); return;
-                case "waiting-ready": finished = true; password = ""; Status?.Invoke("学校认证参数尚未就绪，请检查页面后重试。"); return;
+                case "waiting-ready": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校认证参数尚未就绪，请检查页面后重试。"); return;
                 case "invalid-selector": RequiresInteraction = true; Status?.Invoke("CSS 选择器无效，请修改高级设置。"); return;
                 case "wrong-origin": RequiresInteraction = true; Status?.Invoke("认证地址不匹配，已阻止填写。"); return;
                 default: RequiresInteraction = true; Status?.Invoke("未识别登录表单，请手动登录或设置 CSS 选择器。"); return;
