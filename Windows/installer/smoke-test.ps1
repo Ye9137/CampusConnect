@@ -150,7 +150,23 @@ function Install-App([string]$Target, [switch]$Wizard) {
     if ($executables.Count -ne 2 -or ($executables.Name -notcontains 'Uninstall.exe')) { throw 'The installation must contain the app and uninstaller.' }
     if (-not (Test-Path (Join-Path $Target 'licenses/CampusConnect-LICENSE.txt'))) { throw 'Project license missing from installation.' }
     if (-not (Test-Path (Join-Path $Target 'licenses/WebView2-LICENSE.txt'))) { throw 'WebView2 license missing from installation.' }
-    if (@($appFiles | Where-Object { $_.Extension -eq '.dll' }).Count -ne 0) { throw 'Unexpected loose DLL in single-file installation.' }
+    # The app remains bundled; ONNX native libraries and model assets are
+    # deliberately installed beside it. Require the exact runtime payload.
+    $nativeLibraries = @($appFiles | Where-Object { $_.Extension -eq '.dll' } |
+        ForEach-Object { [IO.Path]::GetRelativePath($Target, $_.FullName) })
+    $expectedLibraries = @('onnxruntime.dll', 'onnxruntime_providers_shared.dll')
+    if (@(Compare-Object ($expectedLibraries | Sort-Object) ($nativeLibraries | Sort-Object)).Count -ne 0) {
+        throw 'Installed ONNX native libraries differ from the expected payload.'
+    }
+    $sourcePath = Join-Path $Target 'models/SOURCE.json'
+    if (-not (Test-Path $sourcePath)) { throw 'Model provenance metadata missing from installation.' }
+    $modelSource = Get-Content $sourcePath -Raw | ConvertFrom-Json
+    foreach ($asset in $modelSource.files.PSObject.Properties) {
+        $installed = Join-Path $Target ('models/' + $asset.Name)
+        if (-not (Test-Path $installed) -or (Get-FileHash $installed -Algorithm SHA256).Hash -ne $asset.Value) {
+            throw "Installed model asset missing or hash mismatch: $($asset.Name)"
+        }
+    }
 }
 try {
     New-Item -ItemType Directory -Path $first -Force | Out-Null
@@ -182,7 +198,9 @@ try {
     if (-not $trayProcess.WaitForExit(60000)) { $trayProcess.Kill(); throw 'Tray startup did not initialize.' }
     $trayResult = Get-Content $trayReport -Raw | ConvertFrom-Json
     if ($trayResult.mainWindowVisible -or $trayResult.showInTaskbar -or -not $trayResult.startupToggle) { throw 'Logon startup must initialize while hidden in the tray.' }
-    if (Test-Path (Join-Path $first 'CampusConnect.exe')) { throw 'Old application files remain after directory migration.' }
+    foreach ($owned in @('CampusConnect.exe', 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'models/captcha-common.onnx', 'models/captcha-digits.json', 'models/SOURCE.json')) {
+        if (Test-Path (Join-Path $first $owned)) { throw "Old owned file remains after directory migration: $owned" }
+    }
     if (-not (Test-Path $sentinel)) { throw 'Migration deleted unrelated files.' }
     # Execute the registered command, rather than bypassing the Windows Settings entry.
     $entry = Get-ItemProperty $registryPath
@@ -195,7 +213,9 @@ try {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while ((Test-Path $registryPath) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
     if (Test-Path $registryPath) { throw 'Uninstall registration was not removed.' }
-    if (Test-Path (Join-Path $second 'CampusConnect.exe')) { throw 'Uninstall did not remove the app.' }
+    foreach ($owned in @('CampusConnect.exe', 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'models/captcha-common.onnx', 'models/captcha-digits.json', 'models/SOURCE.json')) {
+        if (Test-Path (Join-Path $second $owned)) { throw "Uninstall did not remove owned file: $owned" }
+    }
     if (Test-Path $desktopShortcut) { throw 'Desktop shortcut survived uninstall.' }
     if (Get-ItemProperty -Path $runKey -Name 'CampusConnect.Windows' -ErrorAction SilentlyContinue) { throw 'Startup entry survived uninstall.' }
     if (Test-Path $menuShortcut) { throw 'Start menu shortcut survived uninstall.' }
