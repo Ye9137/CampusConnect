@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.0.3-local.7</Version>
-    <FileVersion>2.0.3.7</FileVersion>
+    <Version>2.0.3-local.8</Version>
+    <FileVersion>2.0.3.8</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -23,12 +23,14 @@
     <Description>校园网助手 Windows 版</Description>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <EmbeddedResource Include="PortalTemplate.js" />
     <EmbeddedResource Include="PortalAgreements.js" />
     <EmbeddedResource Include="../../macOS/source/PortalBootstrap.js" LogicalName="CampusConnect.PortalBootstrap.js" />
     <EmbeddedResource Include="PortalCaptcha.js" />
     <EmbeddedResource Include="Desktop.html" />
+    <None Update="models/*.onnx;models/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <!-- WebView2 ships both UI bindings; this app uses WinForms only. -->
   <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
@@ -36,9 +38,13 @@
       <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
     </ItemGroup>
   </Target>
-  <Target Name="RemoveDevelopmentDocumentation" AfterTargets="ComputeFilesToPublish">
+  <Target Name="RemoveDevelopmentDocumentation" AfterTargets="ComputeResolvedFilesToPublishList" BeforeTargets="_ComputeFilesToBundle">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.xml' Or '%(Extension)' == '.pdb'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.lib'" />
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'onnxruntime' Or '%(Filename)' == 'onnxruntime_providers_shared'">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
     </ItemGroup>
   </Target>
 </Project>

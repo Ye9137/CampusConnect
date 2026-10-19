@@ -87,9 +87,11 @@ internal sealed partial class MainForm : Form
             if (!IsDisposed && expected == generation) await SafeAsync(() => CheckInternetAsync(false));
         };
         timer.Tick += async (_, _) => {
-            if (busy || backgroundRefreshTask is { IsCompleted: false }) return;
-            backgroundRefreshTask = RefreshAsync(scan: currentSsid != saved.Ssid &&
-                DateTimeOffset.UtcNow - lastWifiScan >= AutoPolicy.WifiScanInterval, waitForScan: false, background: true);
+            if (!saved.Automatic || busy || backgroundRefreshTask is { IsCompleted: false }) return;
+            backgroundRefreshTask = online == true
+                ? SafeAsync(() => CheckInternetAsync(false))
+                : RefreshAsync(scan: currentSsid != saved.Ssid && DateTimeOffset.UtcNow - lastWifiScan >= AutoPolicy.WifiScanInterval,
+                    waitForScan: false, background: true);
             await backgroundRefreshTask;
         };
         InitializeBrowserRecovery();
@@ -188,7 +190,7 @@ internal sealed partial class MainForm : Form
                 lastStateJson = null;
                 uiReady = true; PushProfile(); PushStartup(); SendState();
                 Post(new { kind = "restore", page, snapshot = shellSnapshot });
-                if (!firstReady) break;
+                if (!firstReady) { UpdatePollingSchedule(); break; }
                 if (verificationPath is not null) {
                     var result = await shell.CoreWebView2.ExecuteScriptAsync("JSON.stringify({pageCount:document.querySelectorAll('.nav button').length,title:document.title,passwordMasked:document.getElementById('password').type==='password',startupToggle:!!document.getElementById('startup'),byYe:document.querySelector('.author').textContent})");
                     var snapshot = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(JsonSerializer.Deserialize<string>(result) ?? "{}") ?? [];
@@ -197,7 +199,7 @@ internal sealed partial class MainForm : Form
                     File.WriteAllText(verificationPath, JsonSerializer.Serialize(snapshot));
                     exiting = true; Close(); return;
                 }
-                timer.Start();
+                UpdatePollingSchedule();
                 // Connect immediately from the WLAN cache when the target is already visible.
                 await RefreshAsync(scan: false);
                 if (!saved.IsWired && currentSsid != saved.Ssid) await RefreshAsync(waitForScan: false); break;
@@ -340,6 +342,7 @@ internal sealed partial class MainForm : Form
         LocalStore.Save(draft, secret);
         wiredAttempt?.Cancel();
         generation++; saved = draft; savedPassword = secret; policy.Reset(); recovery.Reset(); online = null;
+        UpdatePollingSchedule();
         currentSsid = null; wiredInterface = null; permissionNeeded = false; networks = [];
         StopAuthentication(); UpdatePortalVisibility(); shellSnapshot = null; PushProfile();
         Record(saved.Automatic ? "设置已保存，自动连接已开启。" : "设置已保存。");
@@ -349,6 +352,7 @@ internal sealed partial class MainForm : Form
     {
         wiredAttempt?.Cancel();
         generation++; recovery.Reset(); saved = saved with { Automatic = false }; StopAuthentication(); UpdatePortalVisibility();
+        UpdatePollingSchedule();
         try { LocalStore.Save(saved, savedPassword); Record("自动连接已暂停。"); }
         catch (Exception ex) { Record("本次运行已暂停，但保存设置失败：" + ex.Message); }
     }
@@ -472,13 +476,24 @@ internal sealed partial class MainForm : Form
         => online is null || DateTimeOffset.UtcNow - lastInternetCheck >= AutoPolicy.InternetCheckInterval
             ? CheckInternetAsync(saved.Automatic) : Task.CompletedTask;
 
+    private void UpdatePollingSchedule()
+    {
+        if (IsDisposed || Disposing || exiting) return;
+        if (!configurationLoaded || !saved.Automatic) { timer.Stop(); return; }
+        // Online: only a slower reachability probe. Offline: resume quick network discovery.
+        var interval = online == true ? (int)AutoPolicy.InternetCheckInterval.TotalMilliseconds
+            : AutoPolicy.NetworkCheckIntervalMilliseconds;
+        if (timer.Interval != interval) timer.Interval = interval;
+        if (!timer.Enabled) timer.Start();
+    }
+
     private async Task CheckInternetAsync(bool openIfOffline)
     {
         if (checking) return;
         checking = true;
         lastInternetCheck = DateTimeOffset.UtcNow;
+        var expected = generation;
         try {
-            var expected = generation;
             var activeProfile = saved;
             var connected = await CampusNetwork.IsAvailableAsync(activeProfile);
             if (expected != generation || IsDisposed) return;
@@ -498,7 +513,11 @@ internal sealed partial class MainForm : Form
             var result = await Connectivity.CheckAsync(adapter);
             if (expected != generation || IsDisposed) return;
             connected = await CampusNetwork.IsAvailableAsync(activeProfile);
-            if (expected != generation || IsDisposed || !connected) return;
+            if (expected != generation || IsDisposed) return;
+            if (!connected) {
+                online = false; recovery.Observe(InternetStatus.Unavailable); portal.ReportInternetUnavailable();
+                Record("校园网络连接已变化，等待重新连接。"); return;
+            }
             online = result == InternetStatus.Online;
             recovery.Observe(result);
             if (result == InternetStatus.Online) { portal.ConfirmInternetAccess(); status = ""; }
@@ -508,7 +527,10 @@ internal sealed partial class MainForm : Form
                 Record("百度 ping 不通，正在重新连接校园网认证…");
                 await OpenPortalAsync(showPage: false);
             }
-        } finally { checking = false; PushState(); }
+        } catch {
+            if (expected == generation) online = false;
+            throw;
+        } finally { checking = false; UpdatePollingSchedule(); PushState(); }
     }
     private void StopAuthentication()
     {

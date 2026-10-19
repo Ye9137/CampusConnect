@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>Offline zPortal fixture</title>
+<form id="login_form" action="/zportal/login/do" method="post">
+  <input id="qrCodeId" type="text"><button id="publicIdLoginBtn" type="button">登录</button>
+  <div id="login_box">
+    <input id="user_name" name="username" type="text" value="用户名" onfocus="if(value==='用户名')value=''" onblur="if(!value)value='用户名'">
+    <input id="tx" type="text" value="密码">
+    <input id="password" name="pwd" type="password" value="密码" style="display:none">
+    <div id="validcode_div" style="display:none">
+      <input id="valid_code" name="validCode" type="text" value="验证码" onfocus="if(value==='验证码')value=''" onblur="if(!value)value='验证码'">
+      <img id="validcode_img" width="120" height="40">
+    </div>
+    <input id="signin_validcode_flag" name="validCodeFlag" type="hidden" value="false">
+    <button id="login_submit" type="button">登录</button>
+  </div>
+</form>
+<script>
+window.loginClicks=0;window.qrClicks=0;window.reveals=0;
+const tx=document.getElementById('tx'),pwd=document.getElementById('password');
+tx.onfocus=function(){if(this.value!=='密码')return;window.reveals++;this.style.display='none';pwd.style.display='';pwd.value='';pwd.focus();};
+pwd.onblur=function(){if(this.value!=='')return;this.style.display='none';tx.style.display='';tx.value='密码';};
+document.getElementById('publicIdLoginBtn').onclick=()=>window.qrClicks++;
+document.getElementById('login_submit').onclick=()=>{
+  if(!user_name.value||user_name.value==='用户名'||!pwd.value||pwd.value==='密码')return;
+  if(signin_validcode_flag.value==='true'&&(!valid_code.value||valid_code.value==='验证码'))return;
+  window.loginClicks++;
+};
+const canvas=document.createElement('canvas');canvas.width=120;canvas.height=40;
+canvas.getContext('2d').fillRect(10,10,80,20);validcode_img.src=canvas.toDataURL('image/png');
+</script>

@@ -5,14 +5,40 @@ using System.Text;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
+using Microsoft.ML.OnnxRuntime;
+using System.Text.Json;
 
 namespace CampusConnect;
 
-internal sealed record CaptchaRecognition(string Digits, string Placeholder, string Hint);
+internal sealed record CaptchaRecognition(string Digits, string Placeholder, string Hint, string Engine = "");
 
 internal static class CaptchaOcr
 {
+    private static readonly SemaphoreSlim RecognitionGate = new(1, 1);
     internal static async Task<CaptchaRecognition> RecognizeAsync(byte[] bytes, int expectedLength = 0, CancellationToken cancellationToken = default)
+    {
+        await RecognitionGate.WaitAsync(cancellationToken);
+        try {
+            CaptchaRecognition model;
+            using (var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
+                budget.CancelAfter(TimeSpan.FromSeconds(6));
+                try {
+                    model = CaptchaModel.Recognize(bytes, expectedLength, budget.Token);
+                    if (model.Digits.Length > 0 || model.Placeholder == "识别结果不一致") return model;
+                } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+                    model = new("", "模型识别超时", "本地模型识别用时较长，请根据原图输入。");
+                } catch (Exception ex) when (ex is OnnxRuntimeException or TypeInitializationException or DllNotFoundException
+                    or BadImageFormatException or EntryPointNotFoundException or IOException or JsonException or ArgumentException) {
+                    model = new("", "本地模型不可用", "本地模型或运行库未能加载，可重新运行安装程序补全组件并重启；当前可根据原图输入。");
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            var system = await RecognizeWindowsAsync(bytes, expectedLength, cancellationToken);
+            return system.Digits.Length > 0 ? system with { Engine = "系统识别参考" } : model;
+        } finally { RecognitionGate.Release(); }
+    }
+
+    private static async Task<CaptchaRecognition> RecognizeWindowsAsync(byte[] bytes, int expectedLength, CancellationToken cancellationToken)
     {
         try {
             var languages = OcrEngine.AvailableRecognizerLanguages;
@@ -54,7 +80,7 @@ internal static class CaptchaOcr
         }
     }
 
-    private static string DigitsFromText(string text, int expectedLength)
+    internal static string DigitsFromText(string text, int expectedLength)
     {
         var digits = new StringBuilder();
         foreach (var character in text.Normalize(NormalizationForm.FormKC)) {

@@ -131,7 +131,9 @@ public static class PortalScript
             const users = [...root.querySelectorAll('input')].filter(e => editable(e) && visible(e) && /^(text|tel|email)$/.test(e.type));
             user = cfg.userSelector ? document.querySelector(cfg.userSelector) :
               users.find(e => /user|account|student|phone|login|用户名|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' '))) || users[0];
-            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) :
+            const zportalSubmit = pass?.form?.id === 'login_form' && pass.id === 'password' && user?.id === 'user_name'
+              ? pass.form.querySelector('button#login_submit[type="button"]') : null;
+            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : zportalSubmit ||
               [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')]
               .filter(e => e.getClientRects().length > 0).find(e => e.type === 'submit' ||
                 /^(登录|登陆|认证|连接|login|signin|connect)$/i.test((e.innerText || e.value || '').replace(/\s+/g,'')));

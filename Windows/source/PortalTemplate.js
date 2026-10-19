@@ -4,7 +4,15 @@
   const outcome = window.__campusSubmitAttempt?.result;
   const successPage = location.pathname === '/eportal/success.jsp' &&
     !!new URLSearchParams(location.search).get('userIndex');
-  if (successPage || outcome === 'success') return 'authenticated';
+  const zportalSuccess = /^\/zportal\/goToAuthResult\/?$/.test(location.pathname || '') && (() => {
+    const form = document.querySelector('form#hidden_form[method="post"]');
+    const logout = document.querySelector('#logout_submit');
+    if (!form || !logout || !logout.getClientRects().length || document.querySelector('#login_submit')) return false;
+    const action = new URL(form.action, location.href);
+    return action.origin === cfg.origin && action.pathname === '/zportal/logout' &&
+      ['userName','userIp','deviceIp'].every(name => form.querySelector('input[type="hidden"][name="'+name+'"]'));
+  })();
+  if (successPage || zportalSuccess || outcome === 'success') return 'authenticated';
   if (outcome === 'fail') return 'authentication-rejected';
   if (cfg.statusOnly) return window.__campusSubmitted ? 'awaiting-authentication' : 'not-submitted';
   const pending = cfg.confirmSubmit && window.__campusSubmitAttempt;
@@ -19,11 +27,11 @@
   if (ready && (ready.failed || !ready.pageInfo || !ready.getServices)) return 'waiting-ready';
   const visible = e => e && !e.disabled && e.getClientRects().length > 0;
   const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
-  let user, pass, submit, portalUser, portalPass, portalButton;
+  let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton;
   const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
-    input === portalPass ? document.querySelector('#pwd_tip') : null;
+    input === portalPass ? document.querySelector('#pwd_tip') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
   const available = input => editable(input) && (visible(input) ||
-    (portalButton && visible(tipFor(input))));
+    ((portalButton || zportalButton) && visible(tipFor(input))));
   try {
     // Ruijie ePortal displays readonly tips over hidden real inputs. Its login
     // control is an image-only anchor, so text/button heuristics cannot find it.
@@ -36,14 +44,24 @@
     }
     // Unknown ePortal variants retain full-load behavior; only inspected initialization is accelerated.
     if (portalButton && !ready && document.readyState !== 'complete') return 'waiting-ready';
+    // Inspected zPortal uses #tx as a visible password prompt over #password.
+    // Match the complete form so the separate QR-code login button is not chosen.
+    const zform = document.querySelector('form#login_form');
+    zportalUser = zform?.querySelector('input#user_name[name="username"]');
+    zportalPass = zform?.querySelector('input#password[name="pwd"][type="password"]');
+    zportalButton = zform?.querySelector('button#login_submit[type="button"]');
+    if (!editable(zportalUser) || !editable(zportalPass) || !zportalButton ||
+        zportalUser.form !== zform || zportalPass.form !== zform || zportalButton.form !== zform) {
+      zportalUser = zportalPass = zportalButton = null;
+    }
     pass = cfg.passwordSelector ? document.querySelector(cfg.passwordSelector) :
-      portalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
+      portalPass || zportalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
     const root = pass && pass.form ? pass.form : document;
-    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : portalUser ||
+    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : portalUser || zportalUser ||
       [...root.querySelectorAll('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')]
       .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
     if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
-    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton ||
+    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton || zportalButton ||
       [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
         .find(e => e.type === 'submit' || /^(登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim()));
   } catch (_) { return 'invalid-selector'; }

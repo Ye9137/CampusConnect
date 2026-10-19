@@ -1,0 +1,24 @@
+{
+  "project": "ddddocr",
+  "version": "1.5.6",
+  "source": "https://pypi.org/project/ddddocr/1.5.6/",
+  "upstream": "https://github.com/sml2h3/ddddocr",
+  "wheel_sha256": "f13865b00e42de5c2507c1889ba73c2bacd218a49d15b928c2a5c82667062ac5",
+  "model_entry": "ddddocr/common_old.onnx",
+  "license": "MIT",
+  "files": {
+    "captcha-common.onnx": "b8f2ad9cbc1f2e3922a6cb9459e30824e7e2467f3fb4fd61420640e34ea0bf68",
+    "captcha-digits.json": "38d6dea58f55839412536c4cccfc939ec3bd4905af13bdc61e853ae4aa17b756"
+  },
+  "preprocessing": "proportional width, height 64; grayscale; normalize (pixel/255-0.5)/0.5",
+  "decoding": "full-class greedy CTC; accept ASCII digit labels only; blank index 0; collapse repeated labels before removing blanks",
+  "charset_source": "ddddocr/__init__.py DdddOcr.__init__ non-beta charset literal; only digit indices retained; no source execution",
+  "runtime": {
+    "package": "Microsoft.ML.OnnxRuntime",
+    "version": "1.23.2",
+    "execution_provider": "CPU",
+    "native_dependency": "Microsoft Visual C++ 2015-2022 runtime",
+    "initial_install_url": "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+  },
+  "preprocessing_note": "Windows adapter uses high-quality bicubic resizing in place of PIL Lanczos; grayscale normalization and CTC dictionary indices follow upstream. Recognition accuracy is unmeasured."
+}

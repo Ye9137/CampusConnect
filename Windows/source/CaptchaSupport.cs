@@ -75,6 +75,7 @@ internal static class CaptchaSupport
             reference.Text = recognized;
             reference.PlaceholderText = result.Placeholder;
             copy.Enabled = recognized.Length > 0;
+            if (result.Engine.Length > 0) caption.Text = result.Engine + "（请核对原图）";
             if (recognized.Length == 0) hint.Text = result.Hint;
         };
         if (dialog.ShowDialog(owner) != DialogResult.OK) return Task.FromResult<string?>(null);

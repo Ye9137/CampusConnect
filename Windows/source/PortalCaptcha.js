@@ -5,10 +5,12 @@
       /captcha|valid[_-]?code|verify[_-]?code|check[_-]?code|验证码/i.test(
         [input.id, input.name, input.placeholder, input.getAttribute('aria-label'), input.getAttribute('formcontrolname'),
           ...[...(input.labels || [])].map(label => label.textContent)].join(' ')));
+    const needsCode = input => !input.value.trim() || (input.form?.id === 'login_form' &&
+      input.id === 'valid_code' && input.name === 'validCode' && input.value.trim() === '验证码');
     if (!fields.length) return null;
-    if (fields.length !== 1) return fields.some(input => !input.value.trim()) ? 'manual-required' : null;
+    if (fields.length !== 1) return fields.some(needsCode) ? 'manual-required' : null;
     const input = fields[0];
-    if (input.value.trim()) return null;
+    if (!needsCode(input)) return null;
     const namedImages = [...document.querySelectorAll('img')].filter(image => visible(image) &&
       /captcha|valid[_-]?code|verify[_-]?(code|img|image)|验证码/i.test(
         [image.id, image.className, image.alt, image.getAttribute('src')?.startsWith('data:') ? '' : image.getAttribute('src')].join(' ')));

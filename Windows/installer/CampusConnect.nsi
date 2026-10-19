@@ -22,7 +22,7 @@ Unicode true
   !define RUNTIME "win-x64"
 !endif
 !ifndef VERSION
-  !define VERSION "2.0.3-local.7"
+  !define VERSION "2.0.3-local.8"
 !endif
 !ifndef SIZE_KB
   !define SIZE_KB 0
@@ -44,7 +44,7 @@ SetCompressor /FINAL zlib
 ShowInstDetails show
 ShowUninstDetails show
 BrandingText "By Ye · MIT 开源软件"
-VIProductVersion "2.0.3.7"
+VIProductVersion "2.0.3.8"
 !define MUI_ICON "../source/AppIcon.ico"
 !define MUI_UNICON "../source/AppIcon.ico"
 VIAddVersionKey /LANG=2052 "ProductName" "校园 Wi-Fi 助手安装程序"
@@ -62,7 +62,7 @@ Var StartupCommand
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "欢迎安装校园 Wi-Fi 助手"
-!define MUI_WELCOMEPAGE_TEXT "本向导将安装 CampusConnect ${VERSION}。$\r$\n$\r$\n您可以选择安装目录、创建桌面快捷方式，并在安装完成后立即运行。$\r$\n$\r$\n程序安装到当前用户，已包含 .NET 运行环境。缺少界面组件时，将安装 Microsoft WebView2（需要联网）。"
+!define MUI_WELCOMEPAGE_TEXT "本向导将安装 CampusConnect ${VERSION}。$\r$\n$\r$\n您可以选择安装目录、创建桌面快捷方式，并在安装完成后立即运行。$\r$\n$\r$\n程序安装到当前用户，已包含 .NET 与验证码模型。缺少组件时，将从微软下载 WebView2 或 Visual C++ 运行库（需要联网，可能提示管理员授权）。"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_DIRECTORYPAGE_VARIABLE $ChosenDir
 !define MUI_DIRECTORYPAGE_TEXT_TOP "程序将安装到下方完整路径，不会额外添加子文件夹。请选一个有写入权限的独立文件夹。"
@@ -312,10 +312,39 @@ Section "缺少时安装 Microsoft WebView2（需要联网）" SEC_WEBVIEW
   SetOutPath "$INSTDIR"
 SectionEnd
 
+Section "缺少时安装模型运行库（可能需联网与管理员授权）" SEC_MODEL_RUNTIME
+  SectionIn RO
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=install-model-runtime.ps1 "install-model-runtime.ps1"
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $1 "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
+  !if "${RUNTIME}" == "win-arm64"
+    StrCpy $2 "arm64"
+  !else
+    StrCpy $2 "x64"
+  !endif
+  DetailPrint "检查验证码模型所需 Microsoft Visual C++ 运行库，已安装则跳过。"
+  ClearErrors
+  ExecWait '$\"$1$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PLUGINSDIR\install-model-runtime.ps1$\" -RuntimeArch $2' $0
+  ${If} ${Errors}
+    StrCpy $0 1
+  ${EndIf}
+  ${If} $0 != 0
+    DetailPrint "模型运行库尚未安装完成，仍可手动输入验证码。"
+    IfSilent model_runtime_done
+    MessageBox MB_OK|MB_ICONINFORMATION "主程序已安装。模型运行库尚未安装完成，仍可手动输入验证码；可联网后重新运行安装程序补全组件。"
+  ${EndIf}
+  model_runtime_done:
+  SetOutPath "$INSTDIR"
+SectionEnd
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_APP} "安装完整程序和运行环境，创建开始菜单入口，并在 Windows 设置中添加卸载项。"
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_DESKTOP} "在当前用户桌面添加快捷方式。默认勾选，可取消。"
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_WEBVIEW} "只在缺少组件时运行 Microsoft 官方安装程序。下载运行时需要互联网连接。"
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MODEL_RUNTIME} "本地验证码模型使用 Microsoft Visual C++ 运行库。缺少时从微软下载并校验签名后安装，可能提示管理员授权。模型识别本身不联网。"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 Function un.onInit

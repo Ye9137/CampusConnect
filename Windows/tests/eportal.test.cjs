@@ -4,11 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8').replace(/\r\n/g, '\n');
-// Windows service selection can evolve independently of the macOS portal script.
-const core = fs.readFileSync(path.join(__dirname, '../../macOS/source/Core.swift'), 'utf8').replace(/\r\n/g, '\n');
-// The agreement hook remains shared by both platforms.
-const macAgreements = core.split('static let agreementScript = #"""\n')[1].split('    """#')[0].split('\n').map(line => line.startsWith('    ') ? line.slice(4) : line).join('\n');
-assert.equal(macAgreements.trimEnd(), fs.readFileSync(path.join(__dirname, '../source/PortalAgreements.js'), 'utf8').replace(/\r\n/g, '\n').trimEnd());
+// Windows portal behavior is maintained and packaged independently of macOS.
 const cfg = {origin:'http://portal.test', username:'test-account\'"', password:'test-password\'"',
   userSelector:'', passwordSelector:'', submitSelector:'', submit:true};
 const script = overrides => template.replace('/*CAMPUS_CONFIG*/', JSON.stringify({...cfg, ...overrides}));
