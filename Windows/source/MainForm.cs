@@ -534,7 +534,7 @@ internal sealed partial class MainForm : Form
             if (result == InternetStatus.Online) { portal.ConfirmInternetAccess(); status = ""; }
             else portal.ReportInternetUnavailable();
             if (result != InternetStatus.Online) Record("未连接成功，等待恢复校园网络。");
-            if (saved.Automatic && saved.AutoSubmit && !portal.RequiresInteraction && !portal.IsAuthenticating && recovery.ShouldAuthenticate(saved.Automatic, saved.UsesWebPortal, DateTimeOffset.UtcNow)) {
+            if (saved.Automatic && !portal.RequiresInteraction && !portal.IsAuthenticating && recovery.ShouldAuthenticate(saved.Automatic, saved.UsesWebPortal, DateTimeOffset.UtcNow)) {
                 Record("未连接成功，正在重新查找目标网络并登录…");
                 if (!activeProfile.IsWired) {
                     var snapshot = await WifiService.ReadSnapshotAsync(activeProfile.Ssid, scan: true, waitForScan: false);

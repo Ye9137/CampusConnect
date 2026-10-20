@@ -377,7 +377,7 @@ enum Page: String, CaseIterable {
                         self.record("未连接成功，等待恢复校园网络。")
                         if self.automatic && self.saved.usesSystemAuthentication && self.policy.shouldPrepareWired(enabled: true, needed: true, busy: self.joining, now: Date()) {
                             self.prepareWired(manual: false)
-                        } else if self.automatic && self.saved.autoSubmit && !self.portal.requiresInteraction && !self.portal.isAuthenticating &&
+                        } else if self.automatic && !self.portal.requiresInteraction && !self.portal.isAuthenticating &&
                             self.recovery.shouldAuthenticate(enabled: true, portalEnabled: self.saved.usesWebPortal, now: Date()) {
                             self.recoverPortal()
                         }
