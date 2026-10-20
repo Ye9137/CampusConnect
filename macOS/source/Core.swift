@@ -23,11 +23,12 @@ enum WiredAuth: String, Codable, CaseIterable, Identifiable {
 
 struct CampusProfile: Codable, Equatable {
     var ssid = "HNPI-STU"
+    var connectionMode: String?
     var wiredAuth: WiredAuth = .web
     var ethernetName = ""
     var broadbandName = ""
     var authenticationClient = ""
-    var isWired: Bool { ssid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var isWired: Bool { connectionMode == "wired" || (connectionMode == nil && ssid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
     var usesSystemAuthentication: Bool { isWired && wiredAuth != .web }
     var usesWebPortal: Bool { portalEnabled && !usesSystemAuthentication }
     var connectionLabel: String { isWired ? "有线 · \(wiredAuth.title)" : "Wi-Fi" }
@@ -44,7 +45,7 @@ struct CampusProfile: Codable, Equatable {
     var automatic = false
 
     enum CodingKeys: String, CodingKey {
-        case ssid, joinMode, wifiUsername, portalEnabled, portalURL, username
+        case ssid, connectionMode, joinMode, wifiUsername, portalEnabled, portalURL, username
         case serviceOption, autoSubmit, automatic
         case wiredAuth, ethernetName, broadbandName, authenticationClient
     }
@@ -52,6 +53,7 @@ struct CampusProfile: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         ssid = try values.decodeIfPresent(String.self, forKey: .ssid) ?? "HNPI-STU"
+        connectionMode = try values.decodeIfPresent(String.self, forKey: .connectionMode)
         wiredAuth = try values.decodeIfPresent(WiredAuth.self, forKey: .wiredAuth) ?? .web
         ethernetName = try values.decodeIfPresent(String.self, forKey: .ethernetName) ?? ""
         broadbandName = try values.decodeIfPresent(String.self, forKey: .broadbandName) ?? ""
@@ -66,6 +68,12 @@ struct CampusProfile: Codable, Equatable {
         automatic = try values.decodeIfPresent(Bool.self, forKey: .automatic) ?? false
     }
 
+    static func empty(wired: Bool) -> CampusProfile {
+        var result = CampusProfile()
+        result.connectionMode = wired ? "wired" : "wifi"; result.ssid = ""; result.portalURL = ""
+        return result
+    }
+
     var validPortalURL: URL? {
         guard let url = URL(string: portalURL), let scheme = url.scheme?.lowercased(),
               ["http", "https"].contains(scheme), url.host != nil,
@@ -73,6 +81,8 @@ struct CampusProfile: Codable, Equatable {
         return url
     }
     func validate() throws {
+        guard connectionMode == nil || ["wifi", "wired"].contains(connectionMode!) else { throw AppError.message("请选择有线或 Wi-Fi 网络。") }
+        guard isWired || !ssid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError.message("请填写校园 Wi-Fi 名称。") }
         guard isWired || ssid.utf8.count <= 32 else { throw AppError.message("Wi-Fi 名称最多为 32 字节；有线模式请留空。") }
         if !isWired && joinMode == .enterprise && wifiUsername.isEmpty { throw AppError.message("企业认证需要 Wi-Fi 用户名。") }
         if ethernetName.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) { throw AppError.message("以太网接口名称无效。") }
@@ -99,6 +109,43 @@ struct Secrets: Codable, Equatable {
 struct LocalConfiguration: Codable {
     var profile: CampusProfile
     var credentials: [String: Secrets] = [:]
+    var profiles: [String: CampusProfile] = [:]
+    enum CodingKeys: String, CodingKey { case profile, credentials, profiles }
+    init(profile: CampusProfile) { self.profile = profile }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try values.decode(CampusProfile.self, forKey: .profile)
+        credentials = try values.decodeIfPresent([String: Secrets].self, forKey: .credentials) ?? [:]
+        profiles = try values.decodeIfPresent([String: CampusProfile].self, forKey: .profiles) ?? [:]
+    }
+    var allProfiles: [String: CampusProfile] {
+        var result = profiles
+        result[profile.isWired ? "wired" : "wifi"] = profile
+        return result
+    }
+}
+
+struct ConnectionSettings: Equatable {
+    var profile: CampusProfile
+    var secrets: Secrets
+}
+
+struct ConnectionDrafts {
+    private var entries: [String: ConnectionSettings] = [:]
+    init(configuration: LocalConfiguration) {
+        for (key, profile) in configuration.allProfiles {
+            entries[key] = ConnectionSettings(profile: profile, secrets: configuration.credentials[profile.ssid] ?? Secrets())
+        }
+    }
+    mutating func remember(profile: CampusProfile, secrets: Secrets) {
+        entries[profile.isWired ? "wired" : "wifi"] = ConnectionSettings(profile: profile, secrets: secrets)
+    }
+    func settings(wired: Bool) -> ConnectionSettings {
+        let key = wired ? "wired" : "wifi"
+        var entry = entries[key] ?? ConnectionSettings(profile: .empty(wired: wired), secrets: Secrets())
+        entry.profile.connectionMode = key
+        return entry
+    }
 }
 
 enum LocalStore {
@@ -110,7 +157,7 @@ enum LocalStore {
         let file = directory.appendingPathComponent("configuration.json")
         guard FileManager.default.fileExists(atPath: file.path) else {
             let legacy = UserDefaults.standard.data(forKey: "campus.profile")
-                .flatMap { try? JSONDecoder().decode(CampusProfile.self, from: $0) } ?? CampusProfile()
+                .flatMap { try? JSONDecoder().decode(CampusProfile.self, from: $0) } ?? CampusProfile.empty(wired: false)
             return LocalConfiguration(profile: legacy)
         }
         return try JSONDecoder().decode(LocalConfiguration.self, from: Data(contentsOf: file))
@@ -121,6 +168,8 @@ enum LocalStore {
     }
     static func save(profile: CampusProfile, secrets: Secrets? = nil, directory: URL = directory) throws {
         var configuration = try load(directory: directory)
+        configuration.profiles = configuration.allProfiles
+        configuration.profiles[profile.isWired ? "wired" : "wifi"] = profile
         configuration.profile = profile
         if let secrets { configuration.credentials[profile.ssid] = secrets }
         let encoder = JSONEncoder()
@@ -135,10 +184,18 @@ enum LocalStore {
     }
 }
 
+enum AutomaticNetworkWork { case stopped, otherNetwork, findTarget, checkInternet }
+
 struct AutoPolicy {
+    static let checkInterval: TimeInterval = 5
+    static func backgroundWork(enabled: Bool, wired: Bool, target: String, current: String?) -> AutomaticNetworkWork {
+        if !enabled || (!wired && target.isEmpty) { return .stopped }
+        if wired || current == target { return .checkInternet }
+        return current == nil || current?.isEmpty == true ? .findTarget : .otherNetwork
+    }
     var lastAttempt = Date.distantPast
     func shouldJoin(enabled: Bool, target: String, current: String?, visible: [String], busy: Bool, now: Date) -> Bool {
-        enabled && !target.isEmpty && current != target && visible.contains(target) && !busy && now.timeIntervalSince(lastAttempt) >= 60
+        enabled && !target.isEmpty && (current == nil || current?.isEmpty == true) && visible.contains(target) && !busy && now.timeIntervalSince(lastAttempt) >= Self.checkInterval
     }
     func shouldPrepareWired(enabled: Bool, needed: Bool, busy: Bool, now: Date) -> Bool {
         enabled && needed && !busy && now.timeIntervalSince(lastAttempt) >= 60
@@ -153,7 +210,7 @@ struct PortalRecovery {
     private(set) var attempts = 0
     private(set) var lastAttempt = Date.distantPast
     private(set) var state: InternetStatus = .unavailable
-    var retryDelay: TimeInterval { min(300, 60 * pow(2, Double(max(0, attempts - 1)))) }
+    var retryDelay: TimeInterval { AutoPolicy.checkInterval }
     mutating func observe(_ result: InternetStatus) {
         if result == .online { reset(); state = .online }
         else { state = result; failures = min(2, failures + 1) }

@@ -96,8 +96,8 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
   <div class="content">
     <section class="page" id="page-dashboard" aria-label="网络概览">
       <div class="dashboard">
-        <div class="card"><div class="row connection"><div class="connection-icon" id="connection-icon" data-icon="wifi"></div><div class="grow"><h2 id="connection-title">正在读取 Wi-Fi 状态</h2><div class="target">目标校园网&nbsp; <span id="target">HNPI-STU</span></div><div class="row"><button class="primary" data-action="connect">立即连接</button><button data-goto="settings">修改配置</button></div></div></div></div>
-        <div class="card row between"><div><h3>自动连接与认证</h3><div class="description" id="auto-description">发现 HNPI-STU 后连接，并使用已保存账号登录。</div></div><input id="automatic" class="toggle" type="checkbox" aria-label="自动连接"></div>
+        <div class="card"><div class="row connection"><div class="connection-icon" id="connection-icon" data-icon="wifi"></div><div class="grow"><h2 id="connection-title">正在读取 Wi-Fi 状态</h2><div class="target">目标校园网&nbsp; <span id="target">尚未设置</span></div><div class="row"><button class="primary" data-action="connect">立即连接</button><button data-goto="settings">修改配置</button></div></div></div></div>
+        <div class="card row between"><div><h3>自动连接与认证</h3><div class="description" id="auto-description">设置校园网络后，使用已保存账号登录。</div></div><input id="automatic" class="toggle" type="checkbox" aria-label="自动连接"></div>
         <div class="card row" id="permission-card" hidden><div class="permission-icon" data-icon="location"></div><div class="grow"><h3>允许读取附近 Wi-Fi</h3><div class="description">请在 Windows 设置中允许桌面应用访问位置信息</div></div><button class="primary" data-action="location">授权定位</button></div>
         <div><div class="row between" style="margin-bottom:14px"><h3 class="network-heading" id="network-heading">附近网络</h3><span class="small muted" id="scan-time"></span></div><div id="networks"><div class="network-empty"><i data-icon="antenna"></i><div>点击刷新扫描附近网络</div></div></div></div>
       </div>
@@ -112,7 +112,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
           <h3 class="section-title"><i id="settings-network-icon" data-icon="wifi"></i>校园网络</h3>
           <div class="field">网络连接方式</div>
           <div class="segment" id="connection-mode" role="group" aria-label="网络连接方式"><button data-connection="wifi" class="active" aria-pressed="true">Wi-Fi 无线网络</button><button data-connection="wired" aria-pressed="false">有线网络（以太网）</button></div>
-          <div class="settings-note" id="connection-save-note">修改连接方式后请点击保存，网络概览显示已保存的配置。</div>
+          <div class="settings-note" id="connection-save-note">有线和无线分别保留配置，切换会恢复各自的信息。修改后请点击保存，网络概览显示已保存的配置。</div>
           <div class="stack" id="wired-fields" hidden>
             <label class="field">有线认证方式<select id="wiredAuth"><option value="web">网页认证</option><option value="pppoe">PPPoE 宽带拨号</option><option value="dot1x">802.1X 系统认证</option><option value="client">学校专用客户端</option></select></label>
             <label class="field" id="ethernet-field">以太网接口（留空自动选择）<input id="ethernetName" list="ethernet-options" placeholder="例如：以太网" autocomplete="off"></label>
@@ -131,15 +131,15 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
             </div>
             <div class="row"><button data-action="ethernetSettings">打开以太网设置</button><button data-action="networkConnections">配置系统网络连接</button></div>
           </div>
-          <label class="field" id="ssid-field">Wi-Fi 名称（有线模式留空）<input id="ssid" placeholder="留空使用有线网络" maxlength="32" autocomplete="off" value="HNPI-STU"></label>
+          <label class="field" id="ssid-field">Wi-Fi 名称<input id="ssid" placeholder="输入校园 Wi-Fi 名称" maxlength="32" autocomplete="off"></label>
           <div class="segment" id="wifi-mode" role="group" aria-label="Wi-Fi 认证方式"><button data-mode="open" class="active">开放网络</button><button data-mode="saved">使用 Windows 已保存的配置</button></div>
-          <div class="settings-note" id="join-help">HNPI-STU 默认按开放网络处理；学号和密码在下方网页认证中填写。</div>
+          <div class="settings-note" id="join-help">请填写校园 Wi-Fi 名称；学号和上网密码在下方网页认证中填写。</div>
           <button id="wifi-settings" data-action="wifiSettings" style="align-self:flex-start" hidden>打开 Windows Wi-Fi 设置</button>
         </div>
         <div class="card stack" id="portal-card">
           <div class="row between"><h3 style="margin:0">连接后进行网页认证</h3><input id="portalEnabled" class="toggle" type="checkbox" aria-label="连接后进行上网认证" checked></div>
           <div id="portal-fields" class="stack">
-            <label class="field">认证页面地址<input id="portalUrl" placeholder="http://192.168.0.123" value="http://192.168.0.123" autocomplete="off"></label>
+            <label class="field">认证页面地址<input id="portalUrl" placeholder="输入学校认证页面地址" autocomplete="off"></label>
             <div class="field-row"><label class="field">学号 / 上网账号<input id="username" placeholder="输入账号" autocomplete="off"></label><label class="field">上网密码<input id="password" type="password" placeholder="输入上网密码" autocomplete="new-password"></label></div>
             <label class="field">运营商 / 服务选项<input id="serviceOption" placeholder="例如：中国联通 或 联通接入服务" autocomplete="off" aria-describedby="service-help"></label>
             <div class="settings-note" id="service-help">填写认证网页中的完整选项名称，例如中国移动、中国联通、中国电信或联通接入服务。网页需要选择运营商时请填写，保存后重新认证；网页没有此选项时留空。</div>
@@ -158,7 +158,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
       <div class="portal-slot" id="portal-slot"><div class="hint"><i data-icon="globe"></i><p>学校认证页面将在这里打开<br><span id="portal-connection-hint">请先连接已设置的校园 Wi-Fi</span></p></div></div>
     </section>
   </div>
-  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.3 · Windows</span></footer>
+  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.4 · Windows</span></footer>
 </main>
 </div>
 <script>
@@ -177,7 +177,7 @@ const svg = key => '<svg viewBox="0 0 24 24" aria-hidden="true">' + icons[key] +
 document.querySelectorAll('[data-icon]').forEach(e => {e.innerHTML=svg(e.dataset.icon);});
 const byId = id => document.getElementById(id);
 const titles = {dashboard:['网络概览','到达校园，连接自动完成。'],settings:['校园网设置','设置目标网络、账号和上网认证方式。'],portal:['上网认证','在校园网内打开登录页并填写已保存的凭据。']};
-let page='dashboard', mode='open', automatic=false, state={}, dirty=false, lastWifiSsid='HNPI-STU';
+let page='dashboard', mode='open', automatic=false, state={}, dirty=false, draftConnection='wifi', connectionDrafts={};
 let boundsFrame=0, lastBounds='', networkRenderKey=null, systemChoicesKey='';
 let transitionId=0, transitioning=false, pageAnimations=[];
 const nav=document.querySelector('.nav');
@@ -224,7 +224,7 @@ function go(next) {
 function setMode(next) {
  mode=next;
  document.querySelectorAll('[data-mode]').forEach(e=>e.classList.toggle('active',e.dataset.mode===mode));
- const wired=!byId('ssid').value.trim();
+ const wired=draftConnection==='wired';
  byId('wifi-mode').hidden=wired;
  byId('ssid-field').hidden=wired;
  setIcon('settings-network-icon',wired?'network':'wifi');
@@ -232,13 +232,13 @@ function setMode(next) {
    const active=e.dataset.connection===(wired?'wired':'wifi');
    e.classList.toggle('active',active);e.setAttribute('aria-pressed',String(active));
  });
- byId('join-help').textContent=wired?'有线模式：使用以太网，无需填写无线网络名称。接好网线后填写下方认证信息，并点击保存。':mode==='open'?'HNPI-STU 默认按开放网络处理；学号和密码在下方网页认证中填写。':'Wi-Fi 密码或企业认证：先在 Windows 设置中连接一次并保存，之后由助手自动连接。';
+ byId('join-help').textContent=wired?'有线模式：使用以太网，无需填写无线网络名称。接好网线后填写下方认证信息，并点击保存。':mode==='open'?'请填写校园 Wi-Fi 名称；学号和上网密码在下方网页认证中填写。':'Wi-Fi 密码或企业认证：先在 Windows 设置中连接一次并保存，之后由助手自动连接。';
  byId('wifi-settings').hidden=wired||mode==='open';
  renderAuthenticationFields();
 }
 const wiredLabels={web:'网页认证',pppoe:'PPPoE 宽带拨号',dot1x:'802.1X 系统认证',client:'学校专用客户端'};
 function renderAuthenticationFields() {
- const wired=!byId('ssid').value.trim(),method=byId('wiredAuth').value;
+ const wired=draftConnection==='wired',method=byId('wiredAuth').value;
  byId('wired-fields').hidden=!wired;
  byId('ethernet-field').hidden=method==='pppoe';
  byId('pppoe-fields').hidden=!wired||method!=='pppoe';
@@ -247,28 +247,34 @@ function renderAuthenticationFields() {
  byId('portal-card').hidden=wired&&method!=='web';
  if(wired)setText('join-help',method==='web'?'有线网页认证：接好网线，填写下方认证地址与账号密码后保存。':`当前选择：${wiredLabels[method]}。请先完成 Windows 或学校客户端的相应配置，再保存并连接。`);
 }
+function blankConnection(next) {
+ return {profile:{connectionMode:next,ssid:'',wiredAuth:'web',portalUrl:'',username:'',serviceOption:'',useSavedWifiProfile:false,portalEnabled:true,autoSubmit:true,automatic},password:''};
+}
+function currentDraft() {
+ const draft=profile();
+ for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption'])draft[key]=byId(key).value;
+ return {profile:draft,password:byId('password').value,dirty};
+}
 function selectConnection(next) {
- if(next==='wired'){
-   if(byId('ssid').value.trim())lastWifiSsid=byId('ssid').value;
-   byId('ssid').value='';
- }else if(!byId('ssid').value.trim())byId('ssid').value=lastWifiSsid;
- setMode(mode);dirty=true;checkpoint();
+ if(!['wifi','wired'].includes(next)||next===draftConnection)return;
+ connectionDrafts[draftConnection]=currentDraft();
+ const entry=connectionDrafts[next]||blankConnection(next);
+ loadProfile({...entry.profile,connectionMode:next,automatic},entry.password);
+ dirty=true;checkpoint();
 }
 function profile() {
- return {ssid:byId('ssid').value.trim(),wiredAuth:byId('wiredAuth').value,ethernetName:byId('ethernetName').value.trim(),broadbandName:byId('broadbandName').value.trim(),authenticationClient:byId('authenticationClient').value,portalUrl:byId('portalUrl').value.trim(),username:byId('username').value.trim(),serviceOption:byId('serviceOption').value.trim(),useSavedWifiProfile:mode==='saved',portalEnabled:byId('portalEnabled').checked,autoSubmit:byId('autoSubmit').checked,automatic};
+ return {connectionMode:draftConnection,ssid:draftConnection==='wired'?'':byId('ssid').value.trim(),wiredAuth:byId('wiredAuth').value,ethernetName:byId('ethernetName').value.trim(),broadbandName:byId('broadbandName').value.trim(),authenticationClient:byId('authenticationClient').value,portalUrl:byId('portalUrl').value.trim(),username:byId('username').value.trim(),serviceOption:byId('serviceOption').value.trim(),useSavedWifiProfile:mode==='saved',portalEnabled:byId('portalEnabled').checked,autoSubmit:byId('autoSubmit').checked,automatic};
 }
 function loadProfile(p,password) {
+ draftConnection=['wifi','wired'].includes(p.connectionMode)?p.connectionMode:(p.ssid?.trim()?'wifi':'wired');
  for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption'])byId(key).value=p[key]||'';
  byId('wiredAuth').value=wiredLabels[p.wiredAuth]?p.wiredAuth:'web';
- if(p.ssid?.trim())lastWifiSsid=p.ssid;
  byId('password').value=password||'';byId('portalEnabled').checked=p.portalEnabled;byId('autoSubmit').checked=p.autoSubmit;
  byId('portal-fields').hidden=!p.portalEnabled;setMode(p.useSavedWifiProfile?'saved':'open');automatic=p.automatic;dirty=false;
 }
 function snapshot() {
- const draft=profile();
- // Keep the exact unfinished input, including spaces, through a UI refresh.
- for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption'])draft[key]=byId(key).value;
- return {profile:draft,password:byId('password').value,dirty,lastWifiSsid};
+ const active=currentDraft();
+ return {...active,connectionDrafts:{...connectionDrafts,[draftConnection]:active}};
 }
 function checkpoint() {post('draft',{snapshot:snapshot()});}
 function textNode(tag,text,className) { const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e; }
@@ -289,9 +295,9 @@ function renderConnectionPresentation() {
 function update(s) {
  state=s;automatic=s.automatic;renderConnectionPresentation();
  setText('status',s.status||'');setText('connection-title',s.connectionTitle||'');
- setText('target',s.target||'');
- const descriptions={web:'接入有线网络后，使用已保存账号进行网页认证。',pppoe:'接入有线网络后，拨打所选 Windows 宽带连接。',dot1x:'接入有线网络后，按系统配置发起 802.1X 认证。',client:'接入有线网络后，打开所选学校客户端并检测联网状态。'};
- setText('auto-description',s.wiredMode?descriptions[s.wiredAuth||'web']:`发现 ${s.target||''} 后连接，并使用已保存账号登录。`);
+ setText('target',s.target||'尚未设置');
+ const descriptions={web:'接入有线网络后，每 5 秒检查连接状态，断线后使用已保存账号重新认证。',pppoe:'接入有线网络后，拨打所选 Windows 宽带连接。',dot1x:'接入有线网络后，按系统配置发起 802.1X 认证。',client:'接入有线网络后，打开所选学校客户端并检测联网状态。'};
+ setText('auto-description',!s.automatic?'自动连接已关闭，不进行后台网络检查。':s.wiredMode?descriptions[s.wiredAuth||'web']:s.target?`每 5 秒检查 ${s.target} 的连接状态，断线后重新连接并认证。`:'请先在校园网设置中保存网络信息。');
  setText('network-heading',s.wiredMode?'有线模式':'附近网络');byId('automatic').checked=s.automatic;
  setDisabled(byId('automatic'),s.busy);byId('busy').hidden=!s.busy;byId('permission-card').hidden=s.wiredMode||!s.permissionNeeded;
  byId('status-dot').classList.toggle('online',s.internetOnline===true);
@@ -343,6 +349,7 @@ function renderNetworks(s) {
      body.append(name,textNode('div','','network-subtitle'));row.append(body);
      const button=textNode('button','设为目标'),ssid=n.ssid;
      button.addEventListener('click',()=>{
+       selectConnection('wifi');
        if(byId('ssid').value!==ssid){byId('username').value='';byId('password').value='';byId('serviceOption').value='';}
        byId('ssid').value=ssid;setMode(row.dataset.secure==='true'?'saved':'open');dirty=true;checkpoint();go('settings');
      });row.append(button);
@@ -373,11 +380,15 @@ function receive(message) {
    byId('startup').disabled=!message.available;
    byId('startup-description').textContent=message.error||(message.enabled?'已开启：登录 Windows 后在托盘运行，自动连接按已保存设置执行。':'登录 Windows 后在托盘运行，自动连接按已保存设置执行。开关立即生效。');
  }
- if(message.kind==='profile'){loadProfile(message.profile,message.password);checkpoint();}
+ if(message.kind==='profile'){
+   for(const key of ['wifi','wired'])if(message.profiles?.[key]&&!connectionDrafts[key]?.dirty)connectionDrafts[key]=message.profiles[key];
+   loadProfile(message.profile,message.password);
+   connectionDrafts[draftConnection]=currentDraft();checkpoint();
+ }
  if(message.kind==='restore'){
    const s=message.snapshot;
+   if(s?.connectionDrafts)connectionDrafts={...connectionDrafts,...s.connectionDrafts};
    if(s?.dirty&&s.profile){loadProfile({...s.profile,automatic:state.automatic},s.password);dirty=true;}
-   if(s?.lastWifiSsid?.trim())lastWifiSsid=s.lastWifiSsid;
    go(message.page);
    checkpoint();post('hydrated');
  }

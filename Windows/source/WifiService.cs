@@ -33,9 +33,9 @@ internal sealed class WifiService : IDisposable
         using var wifi = new WifiService();
         return await wifi.ScanAsync(preferred, scan, waitForScan).ConfigureAwait(false);
     });
-    public static Task JoinAsync(CampusProfile profile, WifiSnapshot snapshot) => Task.Run(async () => {
+    public static Task JoinAsync(CampusProfile profile, WifiSnapshot snapshot, bool allowSwitch = false) => Task.Run(async () => {
         using var wifi = new WifiService();
-        await wifi.ConnectAsync(profile, snapshot).ConfigureAwait(false);
+        await wifi.ConnectAsync(profile, snapshot, allowSwitch).ConfigureAwait(false);
     });
 
     private List<InterfaceInfo> Interfaces()
@@ -108,7 +108,7 @@ internal sealed class WifiService : IDisposable
         }
         var snapshot = new WifiSnapshot(CurrentSsid(preferred), networks.OrderByDescending(n => n.Signal).ToList());
         // WlanScan may flush its cache: read the previous result BEFORE requesting
-        // a background scan. Subsequent one-second heartbeats read the new result.
+        // a background scan. Subsequent five-second heartbeats read the new result.
         if (scan && !waitForScan) RequestScan(interfaces);
         return snapshot;
     }
@@ -120,9 +120,11 @@ internal sealed class WifiService : IDisposable
             if (code == 5) Check(code);
         }
     }
-    public async Task ConnectAsync(CampusProfile profile, WifiSnapshot snapshot)
+    public async Task ConnectAsync(CampusProfile profile, WifiSnapshot snapshot, bool allowSwitch = false)
     {
-        if (CurrentSsid(profile.Ssid) == profile.Ssid) return;
+        var current = CurrentSsid(profile.Ssid);
+        if (current == profile.Ssid) return;
+        if (!allowSwitch && !string.IsNullOrEmpty(current)) throw new InvalidOperationException("当前连接其他网络，自动连接已暂停。");
         var matches = snapshot.Networks.Where(n => n.Ssid == profile.Ssid).ToList();
         var network = (profile.UseSavedWifiProfile ? matches.FirstOrDefault(n => n.ProfileName.Length > 0) : matches.FirstOrDefault(n => !n.Secure))
             ?? throw new InvalidOperationException(profile.UseSavedWifiProfile
@@ -139,6 +141,10 @@ internal sealed class WifiService : IDisposable
                 Check(WlanSetProfile(handle, ref id, 2, OpenProfileXml(profile.Ssid), null, false, IntPtr.Zero, out _));
         }
         var parameters = new ConnectionParameters { Mode = 0, Profile = profileName, BssType = 1 };
+        current = CurrentSsid(profile.Ssid);
+        if (current == profile.Ssid) return;
+        if (!allowSwitch && !string.IsNullOrEmpty(current))
+            throw new InvalidOperationException("网络已变化，自动连接已暂停。");
         Check(WlanConnect(handle, ref id, ref parameters, IntPtr.Zero));
         for (var i = 0; i < 25; i++) {
             await Task.Delay(1000).ConfigureAwait(false);

@@ -21,10 +21,15 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await page.locator('#wifi-mode').isVisible(),false);
     assert.equal(await page.locator('#wifi-settings').isVisible(),false);
     assert.match(await page.locator('#join-help').textContent(),/有线网页认证/);
+    assert.equal(await page.locator('#username').inputValue(),'');
+    assert.equal(await page.locator('#portalUrl').inputValue(),'');
+    await page.locator('#username').fill('wired-account');
+    await page.locator('#password').fill('wired-secret');
+    await page.locator('#portalUrl').fill('http://192.0.2.2');
     await page.locator('#save-enable').click();
     const saved=await page.evaluate(()=>commands.filter(m=>m.command==='save').at(-1));
     assert.equal(saved.profile.ssid,''); assert.equal(saved.profile.automatic,true);
-    assert.equal(saved.profile.username,'test-account'); assert.equal(saved.password,'dummy-password');
+    assert.equal(saved.profile.username,'wired-account'); assert.equal(saved.password,'wired-secret');
     const state={target:'有线网络',wiredMode:true,campusConnected:true,internetOnline:false,busy:false,automatic:true,permissionNeeded:false,connectionTitle:'有线网络已连接 · 未联网',networks:[]};
     await page.evaluate(({saved,state})=>{campus.receive({kind:'profile',profile:saved.profile,password:saved.password});campus.receive({kind:'state',state});campus.receive({kind:'page',page:'dashboard'});},{saved,state});
     await page.waitForFunction(()=>document.getAnimations().length===0);
@@ -73,7 +78,7 @@ const { pathToFileURL } = require('node:url');
       await page.locator('#save').click();
       const value=await page.evaluate(()=>commands.filter(m=>m.command==='save').at(-1).profile);
       assert.equal(value.wiredAuth,method); assert.equal(value.ssid,'');
-      assert.equal(value.username,'test-account');
+      assert.equal(value.username,'wired-account');
     }
     // The currently saved mode remains authoritative while a different draft is edited.
     await page.evaluate(state=>campus.receive({kind:'state',state:{...state,wiredAuth:'pppoe',webPortalEnabled:false}}),state);
@@ -93,8 +98,10 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await page.locator('[data-connection="wired"]').getAttribute('aria-pressed'),'true');
     await page.locator('[data-connection="wifi"]').click();
     assert.equal(await page.locator('#ssid').inputValue(),'Campus');
-    // Old configurations that select wired mode by a blank SSID still work.
+    // Explicit Wi-Fi mode remains selected when its SSID is cleared. Legacy blank SSIDs still migrate as wired.
     await page.locator('#ssid').fill('');
+    assert.equal(await page.locator('[data-connection="wifi"]').getAttribute('aria-pressed'),'true');
+    await page.evaluate(()=>campus.receive({kind:'profile',profile:{ssid:'',portalEnabled:true,autoSubmit:true},password:''}));
     assert.equal(await page.locator('[data-connection="wired"]').getAttribute('aria-pressed'),'true');
     assert.deepEqual(errors,[]);
     console.log('PASS: wired save/reload, Wi-Fi option hiding, no location prompt, connected/disconnected portal controls, and switching back to Wi-Fi.');

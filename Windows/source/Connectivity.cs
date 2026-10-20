@@ -19,7 +19,7 @@ internal static class Connectivity
     internal static async Task<InternetStatus> CheckWithPingAsync(Func<Task<IPStatus>> send, TimeSpan? timeout = null)
     {
         try {
-            var status = await send().WaitAsync(timeout ?? TimeSpan.FromSeconds(6));
+            var status = await send().WaitAsync(timeout ?? TimeSpan.FromSeconds(4));
             return status == IPStatus.Success ? InternetStatus.Online : InternetStatus.Unavailable;
         } catch (Exception ex) when (ex is PingException or TimeoutException or OperationCanceledException or
                                     System.Net.Sockets.SocketException or InvalidOperationException) {

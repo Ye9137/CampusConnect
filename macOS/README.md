@@ -1,5 +1,11 @@
 # macOS 版
 
+## 2.1.4 正式版
+
+[下载 Windows / macOS 2.1.4](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.4) · [更新说明](2.1.4-更新说明.md)
+
+有线、无线分别记住完整配置与密码；开启自动连接后每 5 秒检查目标校园网并尝试恢复。关闭自动连接或使用其他 Wi-Fi 时不扫描、不检查联网、不自动登录。两种模式修改后分别点击保存。
+
 ## 2.1.3 正式版
 
 [下载 macOS 2.1.3 通用版（Apple 芯片 / Intel）](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.3) · [更新说明](2.1.3-更新说明.md)

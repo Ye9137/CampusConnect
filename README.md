@@ -15,14 +15,20 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows / macOS 2.1.3 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.3) · [Windows 更新说明](Windows/2.1.3-更新说明.md) · [macOS 更新说明](macOS/2.1.3-更新说明.md)。修复英文验证码手动输入与回填；macOS 提供 Apple 芯片 / Intel 通用包。
+**Windows / macOS 2.1.4 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.4) · [Windows 更新说明](Windows/2.1.4-更新说明.md) · [macOS 更新说明](macOS/2.1.4-更新说明.md)。有线无线分别记住配置，自动连接按 5 秒检查和恢复，其他 Wi-Fi 保持当前连接。
 
 [![Build](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml/badge.svg)](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 由 [Ye9137](https://github.com/Ye9137) 维护，使用 MIT 许可证开源。
 
-分别为 macOS 和 Windows 制作的桌面校园网连接工具。默认校园 Wi-Fi 为 `HNPI-STU`，认证地址为 `http://192.168.0.123`，可在设置中修改。
+分别为 macOS 和 Windows 制作的桌面校园网连接工具。请在设置中填写自己的校园 Wi-Fi 和认证地址；有线与无线分别保存，未配置时保持空白。
+
+## Windows / macOS 2.1.4 正式版
+
+- 有线与无线分别保留账号、密码、认证地址和连接选项，切换和重启后恢复各自已保存的配置；未保存草稿在本次运行中保留。
+- 自动连接开启后，每 5 秒检查目标校园网是否联网，失败后重新查找目标并打开认证页登录。关闭自动连接或使用其他 Wi-Fi 时不做后台扫描、联网检查和自动登录。
+- 未配置的模式不填入默认学校信息；界面仅显示连接状态。安装包包含 Windows x64 与 macOS 通用版，实网断线恢复仍需现场确认。
 
 ## Windows / macOS 2.1.3 正式版
 

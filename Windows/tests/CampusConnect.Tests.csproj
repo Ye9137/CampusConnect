@@ -7,6 +7,7 @@
     <Compile Include="../source/StartupRegistration.cs" Link="StartupRegistration.cs" />
     <Compile Include="../source/Connectivity.cs" Link="Connectivity.cs" />
     <Compile Include="../source/WiredAuthentication.cs" Link="WiredAuthentication.cs" />
+    <Compile Include="../source/ConnectionProfiles.cs" Link="ConnectionProfiles.cs" />
     <Compile Include="../source/Core.cs" Link="Core.cs" />
     <Compile Include="../source/CaptchaInput.cs" Link="CaptchaInput.cs" />
     <Compile Include="../source/PortalCaptchaResponse.cs" Link="PortalCaptchaResponse.cs" />

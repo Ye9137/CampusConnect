@@ -6,11 +6,11 @@ import Darwin
 enum Connectivity {
     static func check(completion: @escaping (InternetStatus) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            let result = runPing(executable: "/sbin/ping", arguments: ["-n", "-c", "1", "-W", "3000", "-t", "5", "www.baidu.com"])
+            let result = runPing(executable: "/sbin/ping", arguments: ["-n", "-c", "1", "-W", "3000", "-t", "4", "www.baidu.com"])
             DispatchQueue.main.async { completion(result) }
         }
     }
-    static func runPing(executable: String, arguments: [String], timeout: TimeInterval = 6) -> InternetStatus {
+    static func runPing(executable: String, arguments: [String], timeout: TimeInterval = 4) -> InternetStatus {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments

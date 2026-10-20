@@ -12,6 +12,28 @@ internal static class Program
     [STAThread]
     private static void Main() {
         ApplicationConfiguration.Initialize();
+        var directory = Path.Combine(Path.GetTempPath(), "CampusConnect-mode-test-" + Guid.NewGuid().ToString("N"));
+        try {
+            var fresh = LocalStore.LoadFrom(directory);
+            Expect(fresh.Profile.ConnectionMode == "wifi" && fresh.Profile.Ssid == "" && fresh.Password == "", "fresh storage has no fabricated school target");
+            var wifi = new CampusProfile { Ssid = "Custom-Campus", Username = "fixture-wifi-user", PortalUrl = "https://wifi.test/login", ServiceOption = "无线服务" };
+            var wired = new CampusProfile { ConnectionMode = "wired", Ssid = "", Username = "fixture-wired-user", PortalUrl = "https://wired.test/login", EthernetName = "Ethernet fixture" };
+            LocalStore.SaveTo(directory, wifi, "fixture-wifi-secret");
+            // Reproduce a pre-upgrade file containing only the active profile and DPAPI password.
+            var file = Path.Combine(directory, "configuration.json");
+            var legacy = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file))!;
+            legacy.AsObject().Remove("Profiles"); File.WriteAllText(file, legacy.ToJsonString());
+            LocalStore.SaveTo(directory, wired, "fixture-wired-secret");
+            var entries = LocalStore.LoadProfilesFrom(directory);
+            Expect(entries["wifi"].Profile == wifi && entries["wifi"].Password == "fixture-wifi-secret", "real DPAPI migration retains Wi-Fi profile and password");
+            Expect(entries["wired"].Profile == wired && entries["wired"].Password == "fixture-wired-secret", "real storage restores distinct wired settings");
+            Expect(LocalStore.LoadFrom(directory).Profile == wired, "restart uses last saved active mode");
+            var raw = File.ReadAllText(file);
+            Expect(!raw.Contains("fixture-wifi-secret") && !raw.Contains("fixture-wired-secret"), "both secrets remain protected on disk");
+            LocalStore.SaveTo(directory, wifi with { Automatic = false }, "fixture-wifi-updated");
+            Expect(LocalStore.LoadProfilesFrom(directory)["wired"].Password == "fixture-wired-secret", "saving or pausing Wi-Fi retains wired secret");
+            Expect(LocalStore.LoadFrom(directory).Profile.Ssid == "Custom-Campus", "restart restores custom SSID instead of HNPI default");
+        } finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         using var owner = new Form();
         owner.Show();
         using var bitmap = new Bitmap(120, 40);
@@ -51,15 +73,11 @@ internal static class Program
         }
         owner.Close();
         Expect(CaptchaOcr.Calls == 0, "unspecified format never invokes digit recognizer");
-        Console.WriteLine($"PASS: {checks} native CAPTCHA dialog checks (WM_CHAR typing, clipboard paste, validation, case, unknown length).");
+        Console.WriteLine($"PASS: {checks} native CAPTCHA and protected configuration checks (typing, paste, case, legacy migration, separate profiles, DPAPI).");
     }
 }
 
 namespace CampusConnect {
-    // Response filtering belongs to the core tests; only its origin helper is stubbed here.
-    internal static class CampusProfile {
-        internal static string Origin(string value) => new Uri(value).GetLeftPart(UriPartial.Authority);
-    }
     // The dialog test exercises actual UI and manual entry without running a model.
     internal sealed record CaptchaRecognition(string Digits, string Placeholder, string Hint, string Engine = "");
     internal static class CaptchaOcr {

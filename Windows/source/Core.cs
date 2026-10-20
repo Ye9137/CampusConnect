@@ -6,8 +6,9 @@ namespace CampusConnect;
 public sealed record CampusProfile
 {
     public string Ssid { get; init; } = "HNPI-STU";
+    public string? ConnectionMode { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
-    public bool IsWired => string.IsNullOrWhiteSpace(Ssid);
+    public bool IsWired => ConnectionMode == "wired" || (ConnectionMode is null && string.IsNullOrWhiteSpace(Ssid));
     public bool MatchesNetwork(string? currentSsid, bool wiredAvailable)
         => IsWired ? wiredAvailable : currentSsid == Ssid;
     public string WiredAuth { get; init; } = "web";
@@ -40,6 +41,8 @@ public sealed record CampusProfile
 
     public void Validate()
     {
+        if (ConnectionMode is not (null or "wired" or "wifi")) throw new InvalidOperationException("请选择有线或 Wi-Fi 网络。 ");
+        if (!IsWired && string.IsNullOrWhiteSpace(Ssid)) throw new InvalidOperationException("请填写校园 Wi-Fi 名称。 ");
         if (!IsWired && Encoding.UTF8.GetByteCount(Ssid) > 32)
             throw new InvalidOperationException("Wi-Fi 名称最多为 32 字节；有线模式请留空。");
         if (WiredAuth is not ("web" or "pppoe" or "dot1x" or "client"))
@@ -54,14 +57,20 @@ public sealed record CampusProfile
     }
 }
 
+public enum AutomaticNetworkWork { Stopped, OtherNetwork, FindTarget, CheckInternet }
+
 public sealed class AutoPolicy
 {
-    public const int NetworkCheckIntervalMilliseconds = 1000;
-    public static readonly TimeSpan WifiScanInterval = TimeSpan.FromSeconds(4);
-    public static readonly TimeSpan InternetCheckInterval = TimeSpan.FromSeconds(20);
+    public static AutomaticNetworkWork BackgroundWork(bool enabled, bool wired, string target, string? current)
+        => !enabled || (!wired && string.IsNullOrWhiteSpace(target)) ? AutomaticNetworkWork.Stopped
+            : wired || current == target ? AutomaticNetworkWork.CheckInternet
+            : !string.IsNullOrEmpty(current) ? AutomaticNetworkWork.OtherNetwork : AutomaticNetworkWork.FindTarget;
+    public const int NetworkCheckIntervalMilliseconds = 5000;
+    public static readonly TimeSpan WifiScanInterval = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan InternetCheckInterval = TimeSpan.FromSeconds(5);
     public DateTimeOffset LastAttempt { get; private set; } = DateTimeOffset.MinValue;
     public bool ShouldJoin(bool enabled, string target, string? current, IEnumerable<string> visible, bool busy, DateTimeOffset now)
-        => enabled && target.Length > 0 && current != target && visible.Contains(target, StringComparer.Ordinal)
+        => enabled && target.Length > 0 && string.IsNullOrEmpty(current) && visible.Contains(target, StringComparer.Ordinal)
             && !busy && now - LastAttempt >= TimeSpan.FromMilliseconds(NetworkCheckIntervalMilliseconds);
     public bool ShouldPrepareWired(bool enabled, bool needed, bool busy, DateTimeOffset now)
         => enabled && needed && !busy && now - LastAttempt >= TimeSpan.FromSeconds(60);
@@ -76,7 +85,7 @@ public sealed class PortalRecovery
     public int Attempts { get; private set; }
     public DateTimeOffset LastAttempt { get; private set; } = DateTimeOffset.MinValue;
     public InternetStatus State { get; private set; } = InternetStatus.Unavailable;
-    public TimeSpan RetryDelay => TimeSpan.FromSeconds(Math.Min(300, 60 * Math.Pow(2, Math.Max(0, Attempts - 1))));
+    public TimeSpan RetryDelay => TimeSpan.FromSeconds(5);
     public void Observe(InternetStatus result)
     {
         if (result == InternetStatus.Online) Reset();

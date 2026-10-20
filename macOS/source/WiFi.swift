@@ -49,15 +49,15 @@ final class WiFiService {
             DispatchQueue.main.async { completion(ssid) }
         }
     }
-    func scan(preferred: String? = nil, completion: @escaping (Result<WiFiSnapshot, Error>) -> Void) {
+    func scan(preferred: String? = nil, forceScan: Bool = false, completion: @escaping (Result<WiFiSnapshot, Error>) -> Void) {
         queue.async {
             let result: Result<WiFiSnapshot, Error> = Result {
                 guard let interface = CWWiFiClient.shared().interface() else { throw AppError.message("未找到 Wi-Fi 接口。") }
                 guard interface.powerOn() else { return WiFiSnapshot(current: nil, powered: false, networks: [], hiddenCount: 0) }
                 // An existing campus connection can authenticate without a full radio scan.
-                let networks = preferred != nil && interface.ssid() == preferred
+                let networks = preferred != nil && interface.ssid() == preferred && !forceScan
                     ? (interface.cachedScanResults() ?? [])
-                    : try interface.scanForNetworks(withSSID: nil)
+                    : preferred != nil ? try interface.scanForNetworks(withName: preferred!) : try interface.scanForNetworks(withSSID: nil)
                 var unique: [String: VisibleNetwork] = [:]
                 var hidden = 0
                 for n in networks {
@@ -74,14 +74,17 @@ final class WiFiService {
             DispatchQueue.main.async { completion(result) }
         }
     }
-    func connect(profile: CampusProfile, password: String, completion: @escaping (Result<String, Error>) -> Void) {
+    func connect(profile: CampusProfile, password: String, allowSwitch: Bool = false, completion: @escaping (Result<String, Error>) -> Void) {
         queue.async {
             let result: Result<String, Error> = Result {
                 guard let interface = CWWiFiClient.shared().interface() else { throw AppError.message("未找到 Wi-Fi 接口。") }
                 if interface.ssid() == profile.ssid { return profile.ssid }
+                if !allowSwitch, let current = interface.ssid(), !current.isEmpty { throw AppError.message("当前连接其他网络，自动连接已暂停。") }
                 let candidates = try interface.scanForNetworks(withName: profile.ssid)
                     .filter { $0.ssid == profile.ssid }.sorted { $0.rssiValue > $1.rssiValue }
                 guard let network = candidates.first else { throw AppError.message("暂未发现 \(profile.ssid)，请确认已到校园网络覆盖范围。") }
+                if interface.ssid() == profile.ssid { return profile.ssid }
+                if !allowSwitch, let current = interface.ssid(), !current.isEmpty { throw AppError.message("网络已变化，自动连接已暂停。") }
                 switch profile.joinMode {
                 case .open:
                     guard network.supportsSecurity(.none) else { throw AppError.message("这个网络需要 Wi-Fi 密码或企业认证，请修改连接方式。") }

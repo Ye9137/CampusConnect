@@ -32,6 +32,48 @@ import JavaScriptCore
         let encoded = String(data: try JSONEncoder().encode(migrated.profile), encoding: .utf8)!
         expect(!encoded.contains("loginMethod") && !encoded.contains("serviceName"), "removed authentication options are not persisted")
 
+        let modeDirectory = localDirectory.appendingPathComponent("connection-modes")
+        let fresh = try LocalStore.load(directory: modeDirectory)
+        expect(!fresh.profile.isWired && fresh.profile.ssid.isEmpty && fresh.profile.portalURL.isEmpty, "fresh config has explicit empty Wi-Fi mode")
+        var wifiProfile = CampusProfile()
+        wifiProfile.ssid = "Custom-University"; wifiProfile.username = "fixture-wifi-user"
+        wifiProfile.portalURL = "https://wifi.test/login"; wifiProfile.serviceOption = "无线服务"
+        var wiredProfile = CampusProfile.empty(wired: true)
+        wiredProfile.username = "fixture-wired-user"; wiredProfile.portalURL = "https://wired.test/login"
+        wiredProfile.ethernetName = "en5"; wiredProfile.wiredAuth = .web
+        let wifiSecrets = Secrets(wifi: "fixture-radio-secret", portal: "fixture-wifi-secret")
+        let wiredSecrets = Secrets(wifi: "", portal: "fixture-wired-secret")
+        try LocalStore.save(profile: wifiProfile, secrets: wifiSecrets, directory: modeDirectory)
+        // A real old-format file has no per-mode profile dictionary.
+        let modeFile = modeDirectory.appendingPathComponent("configuration.json")
+        var modeJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: modeFile)) as! [String: Any]
+        modeJSON.removeValue(forKey: "profiles")
+        try JSONSerialization.data(withJSONObject: modeJSON).write(to: modeFile)
+        try LocalStore.save(profile: wiredProfile, secrets: wiredSecrets, directory: modeDirectory)
+        let modeReload = try LocalStore.load(directory: modeDirectory)
+        expect(modeReload.profile == wiredProfile, "restart restores saved wired mode")
+        expect(modeReload.allProfiles["wifi"] == wifiProfile, "legacy custom Wi-Fi details survive wired save")
+        var drafts = ConnectionDrafts(configuration: modeReload)
+        expect(drafts.settings(wired: false).profile.ssid == "Custom-University", "Wi-Fi restores custom SSID instead of default")
+        expect(drafts.settings(wired: false).secrets == wifiSecrets, "Wi-Fi passwords restored independently")
+        expect(drafts.settings(wired: true).secrets == wiredSecrets, "wired password restored independently")
+        var wifiDraft = drafts.settings(wired: false)
+        wifiDraft.profile.username = "unfinished wireless"; wifiDraft.secrets.portal = "unfinished wifi secret"
+        drafts.remember(profile: wifiDraft.profile, secrets: wifiDraft.secrets)
+        var wiredDraft = drafts.settings(wired: true)
+        wiredDraft.profile.wiredAuth = .pppoe; wiredDraft.profile.broadbandName = "Fixture dial-up"
+        drafts.remember(profile: wiredDraft.profile, secrets: wiredDraft.secrets)
+        expect(drafts.settings(wired: false) == wifiDraft, "switching back keeps complete unsaved Wi-Fi draft")
+        expect(drafts.settings(wired: true) == wiredDraft, "switching back keeps wired protocol draft")
+        let onlyWired = ConnectionDrafts(configuration: LocalConfiguration(profile: wiredProfile))
+        expect(onlyWired.settings(wired: false).profile.ssid.isEmpty && onlyWired.settings(wired: false).profile.portalURL.isEmpty, "missing Wi-Fi profile never fabricates school defaults")
+        let emptyWifi = CampusProfile.empty(wired: false)
+        expect(!emptyWifi.isWired, "clearing Wi-Fi name does not switch connection mode")
+        do { try emptyWifi.validate(); expect(false, "empty Wi-Fi target saved") } catch { checks += 1 }
+        try LocalStore.save(profile: wifiProfile, secrets: wifiSecrets, directory: modeDirectory)
+        let finalModeReload = try LocalStore.load(directory: modeDirectory)
+        expect(finalModeReload.allProfiles["wired"] == wiredProfile, "saving Wi-Fi preserves wired settings on disk")
+
         let filePermissions = try FileManager.default.attributesOfItem(atPath: localDirectory.appendingPathComponent("configuration.json").path)[.posixPermissions] as? NSNumber
         expect(filePermissions?.intValue == 0o600, "credential file owner-only permissions")
         let directoryPermissions = try FileManager.default.attributesOfItem(atPath: localDirectory.path)[.posixPermissions] as? NSNumber
@@ -129,18 +171,27 @@ import JavaScriptCore
         expect(wiredPolicy.shouldPrepareWired(enabled: true, needed: true, busy: false, now: wiredNow.addingTimeInterval(61)), "system authentication retries after cooldown")
         expect(!wiredPolicy.shouldPrepareWired(enabled: false, needed: true, busy: false, now: wiredNow.addingTimeInterval(600)), "pause blocks system authentication")
         expect(!wiredPolicy.shouldPrepareWired(enabled: true, needed: true, busy: true, now: wiredNow.addingTimeInterval(600)), "no concurrent system authentication")
+        expect(AutoPolicy.checkInterval == 5, "five second automatic cadence")
+        for current in [nil, "Other", "Target"] as [String?] {
+            expect(AutoPolicy.backgroundWork(enabled: false, wired: false, target: "Target", current: current) == .stopped, "disabled mode performs no background work")
+        }
+        expect(AutoPolicy.backgroundWork(enabled: false, wired: true, target: "", current: nil) == .stopped, "wired automatic off remains idle")
+        expect(AutoPolicy.backgroundWork(enabled: true, wired: false, target: "Target", current: "Other") == .otherNetwork, "other Wi-Fi skips scans and ping")
+        expect(AutoPolicy.backgroundWork(enabled: true, wired: false, target: "Target", current: "Target") == .checkInternet, "target network probes internet")
+        expect(AutoPolicy.backgroundWork(enabled: true, wired: false, target: "Target", current: nil) == .findTarget, "disconnected target is rediscovered")
+        expect(AutoPolicy.backgroundWork(enabled: true, wired: false, target: "", current: nil) == .stopped, "blank target never starts background work")
         var policy = AutoPolicy()
         let now = Date()
         expect(!policy.shouldJoin(enabled: true, target: "", current: nil, visible: [""], busy: false, now: now), "wired mode never joins Wi-Fi")
-        expect(policy.shouldJoin(enabled: true, target: "HNPI-STU", current: "Home", visible: ["HNPI-STU"], busy: false, now: now), "connect visible exact target")
+        expect(!policy.shouldJoin(enabled: true, target: "HNPI-STU", current: "Home", visible: ["HNPI-STU"], busy: false, now: now), "other network is never switched automatically")
         expect(!policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU-fake"], busy: false, now: now), "no substring match")
         expect(!policy.shouldJoin(enabled: false, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: now), "pause toggle")
         expect(!policy.shouldJoin(enabled: true, target: "HNPI-STU", current: "HNPI-STU", visible: ["HNPI-STU"], busy: false, now: now), "don't reconnect connected target")
         policy.begin(at: now)
-        expect(!policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: now.addingTimeInterval(59)), "retry cooldown")
-        expect(policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: now.addingTimeInterval(61)), "retry after cooldown")
+        expect(!policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: now.addingTimeInterval(4)), "five second retry cooldown")
+        expect(policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: now.addingTimeInterval(5)), "retry at five seconds")
         for i in 1...1000 {
-            let retryAt = now.addingTimeInterval(Double(60 * i))
+            let retryAt = now.addingTimeInterval(Double(5 * i))
             expect(policy.shouldJoin(enabled: true, target: "HNPI-STU", current: nil, visible: ["HNPI-STU"], busy: false, now: retryAt), "Wi-Fi retries without a failure limit")
             policy.begin(at: retryAt)
         }
@@ -156,11 +207,11 @@ import JavaScriptCore
         recovery.observe(.unavailable)
         expect(recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now), "same SSID expired authentication recovers")
         recovery.begin(at: now)
-        expect(!recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(20)), "no duplicate submissions every heartbeat")
-        expect(recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(60)), "retry after cooldown")
-        recovery.begin(at: now.addingTimeInterval(60))
-        expect(!recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(120)), "second retry backs off")
-        expect(recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(180)), "backoff expires")
+        expect(!recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(4)), "no duplicate submissions before five seconds")
+        expect(recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(5)), "retry after five seconds")
+        recovery.begin(at: now.addingTimeInterval(5))
+        expect(!recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(9)), "second retry respects cooldown")
+        expect(recovery.shouldAuthenticate(enabled: true, portalEnabled: true, now: now.addingTimeInterval(10)), "five second cooldown expires")
         expect(!recovery.shouldAuthenticate(enabled: false, portalEnabled: true, now: now.addingTimeInterval(1000)), "pause blocks recovery")
         expect(!recovery.shouldAuthenticate(enabled: true, portalEnabled: false, now: now.addingTimeInterval(1000)), "disabled portal blocks recovery")
         recovery.observe(.online)
