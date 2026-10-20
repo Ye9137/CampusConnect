@@ -394,6 +394,15 @@ enum PortalScript {
           if (!visible(submit)) return 'missing-submit';
           if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
               typeof window.doauthen !== 'function') return 'waiting-ready';
+          // Leave visible CAPTCHA fields to the school page so letters and case are preserved.
+          const captchaFields = [...document.querySelectorAll('input')].filter(input =>
+            input !== user && input !== pass && (!input.form || input.form === pass.form) &&
+            visible(input) && !input.readOnly && /^(text|tel|number|search)$/.test(input.type) &&
+            /captcha|valid[_-]?code|verify[_-]?code|check[_-]?code|验证码/i.test(
+              [input.id,input.name,input.placeholder,input.getAttribute('aria-label'),input.getAttribute('formcontrolname'),
+                ...[...(input.labels || [])].map(label => label.textContent)].join(' ')));
+          if (captchaFields.some(input => !input.value.trim() || (input.form?.id === 'login_form' &&
+              input.id === 'valid_code' && input.name === 'validCode' && input.value.trim() === '验证码'))) return 'manual-required';
           // Captchas and extra operator fields need the user's input; don't burn a login attempt.
           if (portalButton && ['#validCode','#operatorUserId','#operatorPwd'].some(selector => {
             const input = document.querySelector(selector);

@@ -23,7 +23,8 @@ const makeScript=(extra={})=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify
   const snapshot=await page.evaluate(()=>__campusCaptcha.read());
   eq(snapshot.length,4);eq(snapshot.autoSubmit,true);assert.match(snapshot.image,/^data:image\/png;base64,/);checks++;
   eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'12'),snapshot),'captcha-invalid');
-  eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'ABCD'),snapshot),'captcha-invalid');
+  eq(snapshot.numericOnly,false);
+  eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'ab-7'),snapshot),'captcha-invalid');
   eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),snapshot),'submitted');
   eq(await page.evaluate(()=>codes),['8042']);
   eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),snapshot),'captcha-stale');
@@ -38,6 +39,21 @@ const makeScript=(extra={})=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify
   const manual=await page.evaluate(()=>__campusCaptcha.read());eq(manual.autoSubmit,false);
   eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),manual),'filled');
   eq(await page.locator('#validCode').inputValue(),'8042');eq(await page.evaluate(()=>loginCalls),0);
+  for(const code of ['aB7Z','abcd','ABCD']) {
+   await load();eq(await page.evaluate(makeScript()),'captcha-required');
+   const letters=await page.evaluate(()=>__campusCaptcha.read());
+   eq(await page.evaluate(({ticket,code})=>__campusCaptcha.commit(ticket,code),{...letters,code}),'submitted');
+   eq(await page.evaluate(()=>codes),[code]);eq(await page.locator('#validCode').inputValue(),code);
+  }
+  await load();await page.locator('#validCode').evaluate(e=>e.inputMode='numeric');
+  eq(await page.evaluate(makeScript()),'captcha-required');
+  const numeric=await page.evaluate(()=>__campusCaptcha.read());eq(numeric.numericOnly,true);
+  eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'aB7Z'),numeric),'captcha-invalid');
+  eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'8042'),numeric),'submitted');
+  await load();eq(await page.evaluate(makeScript({submit:false})),'captcha-required');
+  const lettersManual=await page.evaluate(()=>__campusCaptcha.read());
+  eq(await page.evaluate(({ticket})=>__campusCaptcha.commit(ticket,'aB7Z'),lettersManual),'filled');
+  eq(await page.locator('#validCode').inputValue(),'aB7Z');eq(await page.evaluate(()=>loginCalls),0);
   await load();eq(await page.evaluate(makeScript({origin:'http://other.test'})),'wrong-origin');
   eq(await page.locator('#pwd').inputValue(),'');eq(await page.evaluate(()=>window.__campusCaptcha),undefined);
   await load();await page.locator('img').evaluate(e=>e.remove());

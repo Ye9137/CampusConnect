@@ -48,6 +48,8 @@ jobs:
           node-version: '22'
       - name: Test core and native layouts
         run: dotnet run --project Windows/tests -c Release -- Windows/work/generated-login-script.js Windows/work/captcha-probe.js Windows/work/captcha-image.js
+      - name: Test native CAPTCHA typing and clipboard paste
+        run: dotnet run --project Windows/native-tests -c Release
       - name: Test browser automation
         run: node Windows/tests/portal.test.mjs
       - name: Test desktop pages

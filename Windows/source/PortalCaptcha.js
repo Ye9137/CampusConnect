@@ -30,6 +30,8 @@
     // Keep the choice fixed for this challenge, even if a response arrives after the dialog opens.
     const apiImage = window.__campusCaptchaApiImage;
     const fromResponse = typeof apiImage === 'string' && apiImage === expectedImageSource;
+    const numericOnly = input.type === 'number' || input.inputMode === 'numeric' ||
+      /^(?:\[0-9\]|\\d)(?:[+*]|\{\d+(?:,\d*)?\})$/.test(input.pattern);
     const state = {input, image, stale:false, used:false, ticket:Date.now().toString(36) + Math.random().toString(36).slice(2)};
     state.matches = () => user.isConnected && pass.isConnected && user.value === expectedUser && pass.value === expectedPassword &&
       image.getAttribute('src') === expectedImageSource;
@@ -52,13 +54,13 @@
       if (!data) return null;
       state.captured = data;
       const length = input.maxLength > 0 && input.maxLength <= 12 ? input.maxLength : 0;
-      return {ticket:state.ticket, image:data, length, autoSubmit:!!cfg.submit, source:fromResponse ? 'response' : 'page'};
+      return {ticket:state.ticket, image:data, length, numericOnly, autoSubmit:!!cfg.submit, source:fromResponse ? 'response' : 'page'};
     };
     state.commit = (ticket, code) => {
       if (location.origin !== cfg.origin || state.ticket !== ticket || state.used || state.stale ||
           !input.isConnected || !image.isConnected || !visible(input) || input.readOnly ||
           !state.matches() || state.captured !== pixels()) return 'captcha-stale';
-      if (typeof code !== 'string' || !/^[0-9]{1,12}$/.test(code) ||
+      if (typeof code !== 'string' || !(numericOnly ? /^[0-9]{1,12}$/ : /^[A-Za-z0-9]{1,12}$/).test(code) ||
           (input.maxLength > 0 && input.maxLength <= 12 && code.length !== input.maxLength)) return 'captcha-invalid';
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, code);
       input.dispatchEvent(new Event('input', {bubbles:true}));

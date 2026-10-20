@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.1.2</Version>
-    <FileVersion>2.1.2.0</FileVersion>
+    <Version>2.1.3</Version>
+    <FileVersion>2.1.3.0</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>

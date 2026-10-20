@@ -325,7 +325,7 @@ internal sealed class PortalController
     {
         authenticationDeadline = null;
         RequiresInteraction = true; finished = true; password = "";
-        Status?.Invoke("请在验证码窗口核对识别参考并输入数字，完成后继续登录。");
+        Status?.Invoke("请在验证码窗口根据原图输入英文字母和数字，确认后继续登录。");
         CaptchaRequired?.Invoke();
         for (var attempt = 0; attempt < 25; attempt++) {
             if (expected != generation || profile is not { } active || View.IsDisposed) return;

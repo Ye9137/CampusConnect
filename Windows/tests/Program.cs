@@ -166,6 +166,15 @@ Expect(!probe.Contains("not-in-probe") && !probe.Contains(secret), "standalone c
 var imageScript = PortalScript.BuildCaptchaImage(profile with { PortalUrl = "http://portal.test" }, "fixture-image");
 Expect(!imageScript.Contains("/*RESPONSE*/") && !imageScript.Contains(secret), "response image bridge excludes saved credentials");
 await CaptchaResponseTests.RunAsync(Expect);
+foreach (var code in new[] { "aB7Z", "1234", "abcd", "ABCD" }) {
+    Expect(CaptchaInput.IsValid(code, 4, false), "manual alphanumeric CAPTCHA preserves case");
+    Expect(code.All(c => CaptchaInput.Allows(c, false)), "typed alphanumeric CAPTCHA allowed");
+}
+foreach (var code in new[] { "", "abc", "abcde", "ab 7", "中文12", "ＡB12", "ab-7", "ab\n7" })
+    Expect(!CaptchaInput.IsValid(code, 4, false), "invalid pasted CAPTCHA rejected");
+Expect(CaptchaInput.IsValid("aB7Z", 0, false), "unspecified length accepts letters");
+Expect(!CaptchaInput.IsValid(new string('a', 13), 0, false), "CAPTCHA length bounded");
+Expect(CaptchaInput.IsValid("1234", 4, true) && !CaptchaInput.IsValid("aB7Z", 4, true), "explicit numeric page constraint retained");
 if (args.Length >= 1) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0]))!); File.WriteAllText(args[0], script); }
 if (args.Length >= 2) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[1]))!); File.WriteAllText(args[1], probe); }
 if (args.Length >= 3) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[2]))!); File.WriteAllText(args[2], imageScript); }

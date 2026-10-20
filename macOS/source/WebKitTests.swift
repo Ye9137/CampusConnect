@@ -77,6 +77,23 @@ import WebKit
     }
     func run() async throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let captchaPage = """
+        <form><input name="username"><input type="password">
+        <input name="captcha" placeholder="校验码不区分大小写" maxlength="4">
+        <button type="submit">登录</button></form>
+        <script>window.codes=[];document.querySelector('form').onsubmit=e=>{e.preventDefault();codes.push(document.querySelector('[name=captcha]').value)}</script>
+        """
+        try await load(html: captchaPage)
+        try expect(try await fill() == "manual-required", "empty generic CAPTCHA waits for user")
+        try expect(try await js("codes.length") as? Int == 0, "empty CAPTCHA never submits")
+        try expect(try await js("document.querySelector('[name=captcha]').value") as? String == "", "CAPTCHA not overwritten by credentials")
+        try await js("document.querySelector('[name=captcha]').value='aB7Z'")
+        try expect(try await fill() == "submitted", "manual alphanumeric CAPTCHA submits")
+        try expect(try await js("JSON.stringify(codes)") as? String == "[\"aB7Z\"]", "CAPTCHA case preserved")
+        try expect(try await fill() == "already-submitted", "manual CAPTCHA submission deduplicated")
+        try await load(html: captchaPage)
+        try expect(try await fill(submit: false) == "filled", "manual mode leaves empty CAPTCHA for user")
+        try expect(try await js("codes.length") as? Int == 0, "manual mode never submits CAPTCHA")
         let cmcc = try String(contentsOf: source.appendingPathComponent("../../Windows/tests/fixtures/cmcc-font-radio.html"), encoding: .utf8)
         try await load(html: cmcc)
         try expect(try await fill(service: "中国移动") == "submitted", "FONT-labelled operator submits")
