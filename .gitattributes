@@ -1,0 +1,2 @@
+# Keep checksummed model metadata byte-identical on Windows and macOS.
+Windows/source/models/*.json text eol=lf

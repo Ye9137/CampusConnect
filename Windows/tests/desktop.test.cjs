@@ -88,13 +88,14 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await page.locator('#loginMethod, #serviceName, [data-action="openBrowser"]').count(),0);
     assert.equal(await page.locator('#serviceOption').inputValue(),'');
     assert.equal(await page.locator('#browser-submit').isVisible(),true);
-    assert.equal(await page.locator('#browser-advanced').isVisible(),true);
+    assert.equal(await page.locator('#browser-advanced,#userSelector,#passwordSelector,#submitSelector').count(),0);
     // An old direct-auth profile loads its credentials into the sole browser workflow.
-    await page.evaluate(() => campus.receive({kind:'profile',profile:{ssid:'HNPI-STU',portalUrl:'http://192.0.2.1',username:'legacy-account',portalEnabled:true,autoSubmit:true,automatic:false,loginMethod:'direct',serviceName:'old-service'},password:'legacy-password'}));
+    await page.evaluate(() => campus.receive({kind:'profile',profile:{ssid:'HNPI-STU',portalUrl:'http://192.0.2.1',username:'legacy-account',portalEnabled:true,autoSubmit:true,automatic:false,loginMethod:'direct',serviceName:'old-service',userSelector:'#legacy-user',passwordSelector:'[',submitSelector:'#legacy-login'},password:'legacy-password'}));
     assert.equal(await page.locator('#username').inputValue(),'legacy-account');
     assert.equal(await page.locator('#password').inputValue(),'legacy-password');
     await page.locator('#save').click();
     const upgraded = await page.evaluate(()=>window.commands.filter(m=>m.command==='save').at(-1).profile);
+    assert.equal(upgraded.userSelector,undefined);assert.equal(upgraded.passwordSelector,undefined);assert.equal(upgraded.submitSelector,undefined);
     assert.equal(upgraded.loginMethod,undefined);
     assert.equal(upgraded.serviceName,undefined);
     assert.equal(upgraded.autoSubmit,true);

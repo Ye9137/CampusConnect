@@ -40,15 +40,12 @@ struct CampusProfile: Codable, Equatable {
     var portalURL = "http://192.168.0.123"
     var username = ""
     var serviceOption = ""
-    var userSelector = ""
-    var passwordSelector = ""
-    var submitSelector = ""
     var autoSubmit = true
     var automatic = false
 
     enum CodingKeys: String, CodingKey {
         case ssid, joinMode, wifiUsername, portalEnabled, portalURL, username
-        case serviceOption, userSelector, passwordSelector, submitSelector, autoSubmit, automatic
+        case serviceOption, autoSubmit, automatic
         case wiredAuth, ethernetName, broadbandName, authenticationClient
     }
     init() {}
@@ -65,9 +62,6 @@ struct CampusProfile: Codable, Equatable {
         portalURL = try values.decodeIfPresent(String.self, forKey: .portalURL) ?? "http://192.168.0.123"
         username = try values.decodeIfPresent(String.self, forKey: .username) ?? ""
         serviceOption = try values.decodeIfPresent(String.self, forKey: .serviceOption) ?? ""
-        userSelector = try values.decodeIfPresent(String.self, forKey: .userSelector) ?? ""
-        passwordSelector = try values.decodeIfPresent(String.self, forKey: .passwordSelector) ?? ""
-        submitSelector = try values.decodeIfPresent(String.self, forKey: .submitSelector) ?? ""
         autoSubmit = try values.decodeIfPresent(Bool.self, forKey: .autoSubmit) ?? true
         automatic = try values.decodeIfPresent(Bool.self, forKey: .automatic) ?? false
     }
@@ -191,8 +185,8 @@ enum PortalScript {
     static func build(profile: CampusProfile, password: String, statusOnly: Bool = false) throws -> String {
         guard let url = profile.validPortalURL, let origin = origin(url) else { throw AppError.message("请先保存认证地址。") }
         let payload: [String: Any] = ["origin": origin, "username": profile.username, "password": password,
-                                    "serviceOption": profile.serviceOption, "userSelector": profile.userSelector, "passwordSelector": profile.passwordSelector,
-                                    "submitSelector": profile.submitSelector, "submit": profile.autoSubmit, "confirmSubmit": true, "statusOnly": statusOnly]
+                                    "serviceOption": profile.serviceOption, "userSelector": "", "passwordSelector": "",
+                                    "submitSelector": "", "submit": profile.autoSubmit, "confirmSubmit": true, "statusOnly": statusOnly]
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(decoding: data, as: UTF8.self)
         // Credentials are supplied to the current page only after native SSID + origin checks.

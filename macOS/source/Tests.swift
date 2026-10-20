@@ -220,10 +220,12 @@ import JavaScriptCore
         expect(context.evaluateScript(script)?.toString() == "wrong-origin", "reject unrelated origin")
         expect(context.evaluateScript("pass.value")?.toString() == "", "no credentials on wrong origin")
         context.evaluateScript("location.origin='http://192.168.0.123'")
-        profile.userSelector = "["
-        let invalidScript = try PortalScript.build(profile: profile, password: password)
-        expect(context.evaluateScript(invalidScript)?.toString() == "invalid-selector", "reject invalid selector")
-        profile.userSelector = ""; profile.autoSubmit = false
+        let legacySelectors = Data(##"{"username":"kept-account","userSelector":"[","passwordSelector":"#old","submitSelector":"#old-login"}"##.utf8)
+        let migratedSelectors = try JSONDecoder().decode(CampusProfile.self, from: legacySelectors)
+        let migratedJSON = String(decoding: try JSONEncoder().encode(migratedSelectors), as: UTF8.self)
+        expect(migratedSelectors.username == "kept-account", "selector removal preserves account")
+        expect(!migratedJSON.contains("userSelector") && !migratedJSON.contains("passwordSelector") && !migratedJSON.contains("submitSelector"), "removed selectors are not persisted")
+        profile.autoSubmit = false
         let manualScript = try PortalScript.build(profile: profile, password: password)
         expect(context.evaluateScript(manualScript)?.toString() == "filled", "manual submit mode")
         expect(context.evaluateScript("clicks")?.toInt32() == 1, "manual mode doesn't click")

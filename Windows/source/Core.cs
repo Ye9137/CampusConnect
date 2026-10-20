@@ -27,9 +27,6 @@ public sealed record CampusProfile
     public string PortalUrl { get; init; } = "http://192.168.0.123";
     public string Username { get; init; } = "";
     public string ServiceOption { get; init; } = "";
-    public string UserSelector { get; init; } = "";
-    public string PasswordSelector { get; init; } = "";
-    public string SubmitSelector { get; init; } = "";
     public bool AutoSubmit { get; init; } = true;
     public bool Automatic { get; init; }
 
@@ -133,7 +130,7 @@ public static class PortalScript
     // No credentials: intermediate redirect/loading pages must not pin the chain.
     public static string LoginFormProbe(CampusProfile profile)
     {
-        var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = profile.PasswordSelector });
+        var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = "" });
         return """
         (() => {
           const cfg = /*PROBE*/;
@@ -168,8 +165,8 @@ public static class PortalScript
     public static string BuildCaptchaProbe(CampusProfile profile)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
-        var payload = JsonSerializer.Serialize(new { origin, userSelector=profile.UserSelector,
-            passwordSelector=profile.PasswordSelector, submitSelector=profile.SubmitSelector, submit=profile.AutoSubmit });
+        var payload = JsonSerializer.Serialize(new { origin, userSelector="",
+            passwordSelector="", submitSelector="", submit=profile.AutoSubmit });
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
             ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
         using var reader = new StreamReader(stream);
@@ -205,8 +202,8 @@ public static class PortalScript
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
         var payload = JsonSerializer.Serialize(new {
-            origin, username = profile.Username, password, serviceOption = profile.ServiceOption, userSelector = profile.UserSelector,
-            passwordSelector = profile.PasswordSelector, submitSelector = profile.SubmitSelector, submit = profile.AutoSubmit, confirmSubmit = true, statusOnly
+            origin, username = profile.Username, password, serviceOption = profile.ServiceOption, userSelector = "",
+            passwordSelector = "", submitSelector = "", submit = profile.AutoSubmit, confirmSubmit = true, statusOnly
         });
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalTemplate.js")
             ?? throw new InvalidOperationException("缺少认证脚本。");

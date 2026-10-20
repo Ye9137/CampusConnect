@@ -63,7 +63,13 @@ jobs:
           }
       - name: Install NSIS
         shell: pwsh
-        run: choco install nsis -y --no-progress
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { throw 'NSIS download failed after three attempts.' }
+            Start-Sleep -Seconds 10
+          }
       - name: Test installer file manifest
         run: python Windows/installer/test-manifest.py
       - name: Build setup installer

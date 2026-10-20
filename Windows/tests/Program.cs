@@ -41,8 +41,9 @@ foreach (var oldMethod in new[] { "direct", "browser" }) {
     }))!;
     legacy.Validate();
     Expect(legacy.Username == "kept-account" && legacy.PortalUrl == "http://192.0.2.1/eportal/", "upgrade preserves account and portal");
-    Expect(legacy.Automatic && !legacy.AutoSubmit && legacy.PasswordSelector == "#pwd", "upgrade preserves automation and browser settings");
+    Expect(legacy.Automatic && !legacy.AutoSubmit, "upgrade preserves automation and submit preference");
     using var migrated = JsonDocument.Parse(JsonSerializer.Serialize(legacy));
+    Expect(!migrated.RootElement.TryGetProperty("UserSelector", out _) && !migrated.RootElement.TryGetProperty("PasswordSelector", out _) && !migrated.RootElement.TryGetProperty("SubmitSelector", out _), "saving drops removed selector settings");
     Expect(!migrated.RootElement.TryGetProperty("LoginMethod", out _) && !migrated.RootElement.TryGetProperty("ServiceName", out _), "saving drops obsolete API settings");
     Expect(PortalScript.Build(legacy, "dummy-secret").Contains("dummy-secret"), "upgraded configuration builds browser authentication script");
 }

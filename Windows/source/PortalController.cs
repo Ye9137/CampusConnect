@@ -408,7 +408,7 @@ internal sealed class PortalController
                 case "filled":
                     RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("账号密码已填写，请在网页中手动点击登录。"); _ = WatchForCaptchaAsync(expected); return;
                 case "missing-submit":
-                    RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("账号密码已填写，未识别可用的认证按钮，请手动点击或检查按钮选择器。"); return;
+                    RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("账号密码已填写，未识别可用的认证按钮，请在网页中手动点击登录。"); return;
                 case "missing-fields" when attempt < 80: await Task.Delay(150); continue;
                 case "waiting-agreement" when attempt < 80: await Task.Delay(150); continue;
                 case "waiting-agreement": case "agreement-required":
@@ -416,9 +416,9 @@ internal sealed class PortalController
                     Status?.Invoke("网页必选勾选项尚未确认，请在认证页完成协议阅读或手动勾选后重试。"); return;
                 case "manual-required": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校要求验证码或运营商信息，请在认证页补充。"); _ = WatchForCaptchaAsync(expected); return;
                 case "waiting-ready": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校认证参数尚未就绪，请检查页面后重试。"); return;
-                case "invalid-selector": RequiresInteraction = true; Status?.Invoke("CSS 选择器无效，请修改高级设置。"); return;
+                case "invalid-selector": RequiresInteraction = true; Status?.Invoke("认证页面暂时无法识别，请在网页中手动登录。"); return;
                 case "wrong-origin": RequiresInteraction = true; Status?.Invoke("认证地址不匹配，已阻止填写。"); return;
-                default: RequiresInteraction = true; Status?.Invoke("未识别登录表单，请手动登录或设置 CSS 选择器。"); return;
+                default: RequiresInteraction = true; Status?.Invoke("未识别登录表单，请在网页中手动登录。"); return;
             }
         }
     }

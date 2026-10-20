@@ -218,7 +218,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                     self.message = "已触发登录，正在核验学校返回结果和已登录页面…"
                     self.onSubmission?(); self.observeAuthentication()
                 case "filled": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，请在页面点击登录。"
-                case "missing-submit": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，未识别登录按钮，请手动点击或设置按钮选择器。"
+                case "missing-submit": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，未识别登录按钮，请在网页中手动点击登录。"
                 case "missing-service": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "未找到或未能选中填写的服务选项，请检查完整名称或在网页中手动选择。网页没有选项时，请清空设置中的服务选项。"
                 case "service-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "认证页尚未选择运营商或服务。请在设置的“运营商 / 服务选项”中填写网页上的完整名称（如中国移动），保存后重新认证；也可在网页中手动选择并登录。"
                 case "waiting-agreement", "agreement-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "网页必选框或协议项无法自动确认，请在页面手动勾选后登录。"
@@ -227,9 +227,9 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                     self.requiresInteraction = true; self.filled = true; self.password = ""
                     self.message = "学校页面尚未确认提交，请查看页面提示；可点击立即认证重试或手动登录。"
                 case "waiting-ready": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "学校认证参数尚未就绪，请检查页面后重试。"
-                case "invalid-selector": self.requiresInteraction = true; self.message = "高级设置中的 CSS 选择器无效，请修正。"
+                case "invalid-selector": self.requiresInteraction = true; self.message = "认证页面暂时无法识别，请在网页中手动登录。"
                 case "wrong-origin": self.requiresInteraction = true; self.message = "认证地址不匹配，已暂停填写。"
-                default: self.requiresInteraction = true; self.message = "未识别登录表单，请手动操作，或在高级设置中指定输入框。"
+                default: self.requiresInteraction = true; self.message = "未识别登录表单，请在网页中手动登录。"
                 }
             }
         } catch { message = error.localizedDescription }

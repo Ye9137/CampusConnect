@@ -681,15 +681,6 @@ struct RootView: View {
                             Text("填写认证网页中的完整选项名称，例如中国移动、中国联通、中国电信或联通接入服务。网页需要选择运营商时请填写，保存后重新认证；网页没有此选项时留空。")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                             Toggle("自动填写后点击登录", isOn: $model.draft.autoSubmit)
-                            DisclosureGroup("网页认证高级设置 · 特殊认证页面") {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("留空时自动识别。若学校页面包含验证码、额外运营商账号或特殊表单，可先手动完成，再按页面调整。")
-                                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                                    field("账号输入框 CSS 选择器", text: $model.draft.userSelector, prompt: "例如 #username")
-                                    field("密码输入框 CSS 选择器", text: $model.draft.passwordSelector, prompt: "例如 #password")
-                                    field("登录按钮 CSS 选择器", text: $model.draft.submitSelector, prompt: "例如 #login")
-                                }.padding(.top, 10)
-                            }
                         }
                     }
                 }

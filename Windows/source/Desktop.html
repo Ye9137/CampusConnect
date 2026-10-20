@@ -55,7 +55,6 @@ h3{font-size:15px;font-weight:600;margin:0 0 6px}.description{font-size:12px;col
 .check{display:flex;align-items:center;gap:7px;font-size:13px}.check input{accent-color:var(--accent);margin:0}
 .settings-stack{gap:18px}.settings-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.settings-actions .muted{margin-left:auto;font-size:11px}
 details>summary{list-style:none;cursor:pointer;font-size:13px}details>summary:before{content:"›";display:inline-block;width:14px;font-size:17px;line-height:12px;transition:transform .1s}details[open]>summary:before{transform:rotate(90deg)}
-.advanced{padding-top:12px}.advanced .description{font-size:11px}
 .settings-note{font-size:11px;color:var(--muted);line-height:1.6}
 .portal-page{display:flex;flex-direction:column;padding:24px;gap:12px;overflow:hidden}.portal-address{display:flex;align-items:center;gap:12px;font-size:11px;min-height:28px}.portal-address span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-family:ui-monospace,monospace}
 .portal-slot{flex:1;min-height:100px;border-radius:12px;border:1px solid var(--line);background:var(--sidebar);display:grid;place-items:center;text-align:center;color:var(--muted);overflow:hidden}
@@ -145,12 +144,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
             <label class="field">运营商 / 服务选项<input id="serviceOption" placeholder="例如：中国联通 或 联通接入服务" autocomplete="off" aria-describedby="service-help"></label>
             <div class="settings-note" id="service-help">填写认证网页中的完整选项名称，例如中国移动、中国联通、中国电信或联通接入服务。网页需要选择运营商时请填写，保存后重新认证；网页没有此选项时留空。</div>
             <label class="check" id="browser-submit"><input id="autoSubmit" type="checkbox" checked>自动填写后点击登录</label>
-            <details id="browser-advanced"><summary>高级设置 · 特殊认证页面</summary><div class="advanced stack">
-              <div class="description">留空时自动识别。若学校页面包含验证码、额外运营商账号或特殊表单，可先手动完成，再按页面调整。</div>
-              <label class="field">账号输入框 CSS 选择器<input id="userSelector" placeholder="例如 #username" autocomplete="off"></label>
-              <label class="field">密码输入框 CSS 选择器<input id="passwordSelector" placeholder="例如 #password" autocomplete="off"></label>
-              <label class="field">登录按钮 CSS 选择器<input id="submitSelector" placeholder="例如 #login" autocomplete="off"></label>
-            </div></details>
+
           </div>
         </div>
         <div class="settings-actions"><button class="primary" id="save-enable">保存并开启自动连接</button><button id="save">保存设置</button><span class="muted">密码保存在本机</span></div>
@@ -164,7 +158,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
       <div class="portal-slot" id="portal-slot"><div class="hint"><i data-icon="globe"></i><p>学校认证页面将在这里打开<br><span id="portal-connection-hint">请先连接已设置的校园 Wi-Fi</span></p></div></div>
     </section>
   </div>
-  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.1 · Windows</span></footer>
+  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.2 · Windows</span></footer>
 </main>
 </div>
 <script>
@@ -261,10 +255,10 @@ function selectConnection(next) {
  setMode(mode);dirty=true;checkpoint();
 }
 function profile() {
- return {ssid:byId('ssid').value.trim(),wiredAuth:byId('wiredAuth').value,ethernetName:byId('ethernetName').value.trim(),broadbandName:byId('broadbandName').value.trim(),authenticationClient:byId('authenticationClient').value,portalUrl:byId('portalUrl').value.trim(),username:byId('username').value.trim(),serviceOption:byId('serviceOption').value.trim(),useSavedWifiProfile:mode==='saved',portalEnabled:byId('portalEnabled').checked,autoSubmit:byId('autoSubmit').checked,automatic,userSelector:byId('userSelector').value.trim(),passwordSelector:byId('passwordSelector').value.trim(),submitSelector:byId('submitSelector').value.trim()};
+ return {ssid:byId('ssid').value.trim(),wiredAuth:byId('wiredAuth').value,ethernetName:byId('ethernetName').value.trim(),broadbandName:byId('broadbandName').value.trim(),authenticationClient:byId('authenticationClient').value,portalUrl:byId('portalUrl').value.trim(),username:byId('username').value.trim(),serviceOption:byId('serviceOption').value.trim(),useSavedWifiProfile:mode==='saved',portalEnabled:byId('portalEnabled').checked,autoSubmit:byId('autoSubmit').checked,automatic};
 }
 function loadProfile(p,password) {
- for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption','userSelector','passwordSelector','submitSelector'])byId(key).value=p[key]||'';
+ for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption'])byId(key).value=p[key]||'';
  byId('wiredAuth').value=wiredLabels[p.wiredAuth]?p.wiredAuth:'web';
  if(p.ssid?.trim())lastWifiSsid=p.ssid;
  byId('password').value=password||'';byId('portalEnabled').checked=p.portalEnabled;byId('autoSubmit').checked=p.autoSubmit;
@@ -273,8 +267,8 @@ function loadProfile(p,password) {
 function snapshot() {
  const draft=profile();
  // Keep the exact unfinished input, including spaces, through a UI refresh.
- for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption','userSelector','passwordSelector','submitSelector'])draft[key]=byId(key).value;
- return {profile:draft,password:byId('password').value,dirty,advancedOpen:byId('browser-advanced').open,lastWifiSsid};
+ for(const key of ['ssid','ethernetName','broadbandName','authenticationClient','portalUrl','username','serviceOption'])draft[key]=byId(key).value;
+ return {profile:draft,password:byId('password').value,dirty,lastWifiSsid};
 }
 function checkpoint() {post('draft',{snapshot:snapshot()});}
 function textNode(tag,text,className) { const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e; }
@@ -384,7 +378,6 @@ function receive(message) {
    const s=message.snapshot;
    if(s?.dirty&&s.profile){loadProfile({...s.profile,automatic:state.automatic},s.password);dirty=true;}
    if(s?.lastWifiSsid?.trim())lastWifiSsid=s.lastWifiSsid;
-   if(s)byId('browser-advanced').open=!!s.advancedOpen;
    go(message.page);
    checkpoint();post('hydrated');
  }
@@ -410,7 +403,6 @@ document.querySelectorAll('[data-mode]').forEach(e=>e.addEventListener('click',(
 byId('startup').addEventListener('change',()=>{byId('startup').disabled=true;post('setStartup',{enabled:byId('startup').checked});});
 byId('page-settings').addEventListener('input',e=>{if(e.target.id!=='startup'){dirty=true;checkpoint();}});
 byId('page-settings').addEventListener('change',e=>{if(e.target.id!=='startup'){dirty=true;checkpoint();}});
-byId('browser-advanced').addEventListener('toggle',checkpoint);
 byId('portalEnabled').addEventListener('change',()=>{byId('portal-fields').hidden=!byId('portalEnabled').checked;});
 byId('automatic').addEventListener('change',()=>{
  const enabled=byId('automatic').checked;
