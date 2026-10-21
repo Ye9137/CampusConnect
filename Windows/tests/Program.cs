@@ -13,6 +13,20 @@ PortalRedirectTests.Run(Expect);
 Expect(!DesktopBridge.ControlsBusy(true, true), "background poll keeps every control usable");
 Expect(!DesktopBridge.ControlsBusy(false, false), "idle controls remain usable");
 Expect(DesktopBridge.ControlsBusy(true, false), "explicit scan and connect retain the operation lock");
+if (args.Length == 2 && args[0] == "--frame-fixture") {
+    var frameProfile = new CampusProfile { PortalUrl = "http://portal.test", Username = "dummy-user", AutoSubmit = true };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        probe = PortalScript.LoginFormProbe(frameProfile),
+        fill = PortalScript.Build(frameProfile, "dummy-password"),
+        manual = PortalScript.Build(frameProfile with { AutoSubmit = false }, "dummy-password"),
+        status = PortalScript.Build(frameProfile, "", statusOnly: true),
+        captcha = PortalScript.BuildCaptchaProbe(frameProfile),
+        read = PortalScript.InContext(frameProfile, "JSON.stringify(window.__campusCaptcha?.read() ?? null)", "null"),
+        commit = PortalScript.InContext(frameProfile, "window.__campusCaptcha?.commit(window.__campusCaptcha.ticket, 'aB7Z12') ?? 'captcha-stale'", "'captcha-stale'")
+    }));
+    Console.WriteLine("PASS: generated frame fixture from embedded resources.");
+    return;
+}
 if (args.Length == 2 && args[0] == "--redirect-fixture") {
     var landing = PortalRedirectTests.LandingProfile(Expect);
     var entry = landing with { PortalUrl = "http://1.1.1.1" };

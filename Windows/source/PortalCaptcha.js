@@ -1,11 +1,14 @@
   // Runs only after the native connection check and the saved-origin gate.
   const captchaStatus = (() => {
+    const unionField = document.querySelector('#ps[name="psNum"]');
+    const isUnionField = input => input === unionField && !!document.querySelector('#randomimage') &&
+      /checkform\s*\(/.test(document.querySelector('#login_btn')?.getAttribute('onclick') || '');
     const fields = [...document.querySelectorAll('input')].filter(input => (!input.form || input.form === pass.form) && input !== user && input !== pass &&
       visible(input) && !input.readOnly && /^(text|tel|number|search)$/.test(input.type) &&
-      /captcha|valid[_-]?code|verify[_-]?code|check[_-]?code|验证码/i.test(
+      (isUnionField(input) || /captcha|valid[_-]?code|verify[_-]?code|check[_-]?code|验证码/i.test(
         [input.id, input.name, input.placeholder, input.getAttribute('aria-label'), input.getAttribute('formcontrolname'),
-          ...[...(input.labels || [])].map(label => label.textContent)].join(' ')));
-    const needsCode = input => !input.value.trim() || (input.form?.id === 'login_form' &&
+          ...[...(input.labels || [])].map(label => label.textContent)].join(' '))));
+    const needsCode = input => !input.value.trim() || (isUnionField(input) && input.value.trim() === '请输入验证码') || (input.form?.id === 'login_form' &&
       input.id === 'valid_code' && input.name === 'validCode' && input.value.trim() === '验证码');
     if (!fields.length) return null;
     if (fields.length !== 1) return fields.some(needsCode) ? 'manual-required' : null;
@@ -53,7 +56,8 @@
       const data = pixels();
       if (!data) return null;
       state.captured = data;
-      const length = input.maxLength > 0 && input.maxLength <= 12 ? input.maxLength : 0;
+      // This legacy page declares only a maximum of six, not an exact challenge length.
+      const length = !isUnionField(input) && input.maxLength > 0 && input.maxLength <= 12 ? input.maxLength : 0;
       return {ticket:state.ticket, image:data, length, numericOnly, autoSubmit:!!cfg.submit, source:fromResponse ? 'response' : 'page'};
     };
     state.commit = (ticket, code) => {
@@ -61,7 +65,8 @@
           !input.isConnected || !image.isConnected || !visible(input) || input.readOnly ||
           !state.matches() || state.captured !== pixels()) return 'captcha-stale';
       if (typeof code !== 'string' || !(numericOnly ? /^[0-9]{1,12}$/ : /^[A-Za-z0-9]{1,12}$/).test(code) ||
-          (input.maxLength > 0 && input.maxLength <= 12 && code.length !== input.maxLength)) return 'captcha-invalid';
+          (input.maxLength > 0 && input.maxLength <= 12 &&
+            (isUnionField(input) ? code.length > input.maxLength : code.length !== input.maxLength))) return 'captcha-invalid';
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, code);
       input.dispatchEvent(new Event('input', {bubbles:true}));
       input.dispatchEvent(new Event('change', {bubbles:true}));

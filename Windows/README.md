@@ -1,5 +1,11 @@
 # Windows 版
 
+## 2.1.5 正式版
+
+[下载 Windows / macOS 2.1.5](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.5) · [更新说明](2.1.5-更新说明.md)
+
+新增同源框架内登录表单识别，修复 CMCC 页面密码提示层、图片式登录按钮和验证码框。该页“运营商 / 服务选项”留空；验证码需核对后输入。Windows 验证码窗口支持在子页面读取和回填。真实校园网认证仍需现场验证。
+
 ## 2.1.4 正式版
 
 [下载 Windows / macOS 2.1.4](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.4) · [更新说明](2.1.4-更新说明.md)

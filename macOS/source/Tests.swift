@@ -8,6 +8,11 @@ import JavaScriptCore
         if !condition() { fputs("FAIL: \(message)\n", stderr); exit(1) }
     }
     static func main() throws {
+        if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--frame-script" {
+            var profile = CampusProfile(); profile.portalURL = "http://portal.test"; profile.username = "dummy-user"; profile.autoSubmit = true
+            try PortalScript.build(profile: profile, password: "dummy-password").write(toFile: CommandLine.arguments[2], atomically: true, encoding: .utf8)
+            return
+        }
         let localDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("work/storage-test-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: localDirectory) }

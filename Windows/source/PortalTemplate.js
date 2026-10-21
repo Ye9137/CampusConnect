@@ -29,7 +29,7 @@
   const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
   let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton;
   const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
-    input === portalPass ? document.querySelector('#pwd_tip') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
+    input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
   const available = input => editable(input) && (visible(input) ||
     ((portalButton || zportalButton) && visible(tipFor(input))));
   try {
@@ -41,6 +41,18 @@
     if (!editable(portalUser) || portalUser.type !== 'text' ||
         !editable(portalPass) || portalPass.type !== 'password' || !portalButton) {
       portalUser = portalPass = portalButton = null;
+    }
+    // Inspected CMCC union page: use its original prompt and checkform handler.
+    if (!portalButton) {
+      const button = document.querySelector('#login_btn');
+      const prompt = document.querySelector('#passwordIn_1');
+      const account = document.querySelector('#username');
+      const secret = document.querySelector('#pwd');
+      if (editable(account) && account.type === 'text' && editable(secret) && secret.type === 'password' &&
+          editable(prompt) && prompt.type === 'text' && /checkform\s*\(/.test(button?.getAttribute('onclick') || '') &&
+          typeof window.checkform === 'function' && typeof window.hidePassword === 'function') {
+        portalUser = account; portalPass = secret; portalButton = button;
+      }
     }
     // Unknown ePortal variants retain full-load behavior; only inspected initialization is accelerated.
     if (portalButton && !ready && document.readyState !== 'complete') return 'waiting-ready';
@@ -68,6 +80,7 @@
   if (!available(user) || !available(pass)) return 'missing-fields';
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
   for (const [input, value] of [[user,cfg.username],[pass,cfg.password]]) {
+    if (input === portalPass && portalButton?.id === 'login_btn' && visible(tipFor(input))) tipFor(input).click();
     if (!visible(input)) {
       const tip = tipFor(input);
       if (visible(tip)) {

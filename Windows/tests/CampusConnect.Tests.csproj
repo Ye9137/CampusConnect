@@ -13,6 +13,7 @@
     <Compile Include="../source/PortalCaptchaResponse.cs" Link="PortalCaptchaResponse.cs" />
     <Compile Include="../source/DesktopBridge.cs" Link="DesktopBridge.cs" />
     <Compile Include="../source/WifiService.cs" Link="WifiService.cs" />
+    <EmbeddedResource Include="../source/PortalContext.js" LogicalName="CampusConnect.PortalContext.js" />
     <EmbeddedResource Include="../source/PortalTemplate.js" LogicalName="CampusConnect.PortalTemplate.js" />
     <EmbeddedResource Include="../source/PortalAgreements.js" LogicalName="CampusConnect.PortalAgreements.js" />
     <EmbeddedResource Include="../source/PortalCaptcha.js" LogicalName="CampusConnect.PortalCaptcha.js" />

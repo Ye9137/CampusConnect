@@ -77,6 +77,29 @@ import WebKit
     }
     func run() async throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        if let entry = ProcessInfo.processInfo.environment["CAMPUS_FRAME_TEST_URL"], let url = URL(string: entry) {
+            view.navigationDelegate = self
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                navigation = continuation; view.load(URLRequest(url: url))
+            }
+            for _ in 0..<50 {
+                if (try? await js("!!window.frames[0]?.document.querySelector('#pwd')")) as? Bool == true { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            var profile = CampusProfile(); profile.portalURL = entry; profile.username = "dummy-user"; profile.autoSubmit = true
+            let script = try PortalScript.build(profile: profile, password: "dummy-password")
+            try expect(try await js(script) as? String == "manual-required", "native frame placeholder blocks submission")
+            try expect(try await js("window.frames[0].document.querySelector('#username').value") as? String == "dummy-user", "native frame account filled")
+            try expect(try await js("window.frames[0].document.querySelector('#pwd').value") as? String == "dummy-password", "native frame password uses child realm")
+            try expect(try await js("window.frames[0].reveals") as? Int == 1, "native frame prompt uses school click")
+            try expect(try await js("window.frames[0].loginCalls") as? Int == 0, "native frame never submits missing code")
+            try expect(try await js("window.frames[0].document.querySelector('#autocheckbox').checked") as? Bool == false, "native frame remember option stays unchecked")
+            try await js("window.frames[0].document.querySelector('#ps').value='aB7Z12';true")
+            try expect(try await js(script) as? String == "submitted", "native frame original login button clicked")
+            try expect(try await js("window.frames[0].loginCalls") as? Int == 1, "native frame school handler submitted once")
+            try expect(try await js(script) as? String == "already-submitted", "native frame deduplicates submission")
+        }
+
         let captchaPage = """
         <form><input name="username"><input type="password">
         <input name="captcha" placeholder="校验码不区分大小写" maxlength="4">

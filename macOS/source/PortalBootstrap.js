@@ -1,7 +1,14 @@
 (() => {
   // No credentials or native bridge: only accelerate the inspected school's
   // initialization, preserving its original callbacks and encryption settings.
-  if (window !== window.top || location.origin !== /*CAMPUS_ORIGIN*/) return;
+  const allowedOrigin = /*CAMPUS_ORIGIN*/;
+  if (location.origin !== allowedOrigin) return;
+  try {
+    for (let ancestor = window; ; ancestor = ancestor.parent) {
+      if (ancestor.location.origin !== allowedOrigin) return;
+      if (ancestor === ancestor.parent) break;
+    }
+  } catch (_) { return; }
   if (window.__campusPortalBootstrapInstalled) return;
   window.__campusPortalBootstrapInstalled = true;
   // Keep operator popups from covering the login button. Install once per

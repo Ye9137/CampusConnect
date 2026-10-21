@@ -330,7 +330,7 @@ internal sealed class PortalController
         for (var attempt = 0; attempt < 25; attempt++) {
             if (expected != generation || profile is not { } active || View.IsDisposed) return;
             if (CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(active.PortalUrl)) return;
-            var json = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(CaptchaSupport.ReadScript));
+            var json = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.InContext(active, CaptchaSupport.ReadScript, "null")));
             if (expected != generation) return;
             var challenge = json is null ? null : JsonSerializer.Deserialize<CaptchaChallenge>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             if (challenge is null) { await Task.Delay(150); continue; }
@@ -339,7 +339,7 @@ internal sealed class PortalController
             if (expected != generation || profile is null || View.IsDisposed || code is null) return;
             var connected = await CampusNetwork.IsAvailableAsync(active);
             if (expected != generation || !connected || CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(active.PortalUrl)) return;
-            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(CaptchaSupport.CommitScript(challenge, code)));
+            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.InContext(active, CaptchaSupport.CommitScript(challenge, code), "'captcha-stale'")));
             if (expected != generation) return;
             if (result == "submitted") {
                 authenticationDeadline = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -368,7 +368,7 @@ internal sealed class PortalController
             }
             // The document-start script was scoped to the saved entry origin.
             // Install it on an approved redirect destination too, without reloads.
-            await View.CoreWebView2.ExecuteScriptAsync(BootstrapFor(activeProfile));
+            await View.CoreWebView2.ExecuteScriptAsync(PortalScript.InContext(activeProfile, BootstrapFor(activeProfile)));
             if (expected != generation || finished) return;
             var hasForm = JsonSerializer.Deserialize<bool>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.LoginFormProbe(activeProfile)));
             if (expected != generation || finished) return;

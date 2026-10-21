@@ -13,7 +13,7 @@ for folder in ("macOS/source", "Windows/source", "Windows/tests", "Windows/nativ
         if path.is_file() and not set(relative.parts).intersection({"bin", "obj", "dist", "dependencies", "__pycache__", "work", "node_modules"}) and path.name != ".DS_Store":
             if path.suffix in {".swift", ".cs", ".csproj", ".js", ".mjs", ".cjs", ".html", ".sh", ".ps1", ".py", ".yml", ".plist", ".icns", ".ico", ".manifest", ".nsi", ".txt", ".md", ".onnx", ".json"}:
                 files.append(path)
-files += [root / path for path in ("macOS/README.md", "macOS/test.sh", "macOS/test-webkit.sh", "Windows/README.md", "Windows/1.5.1-更新说明.md", "Windows/2.0-更新说明.md", "Windows/build.ps1", "Windows/build-installer.ps1")]
+files += [root / path for path in ("macOS/README.md", "macOS/test.sh", "macOS/test-webkit.sh", "macOS/test-frames.sh", "Windows/README.md", "Windows/1.5.1-更新说明.md", "Windows/2.0-更新说明.md", "Windows/build.ps1", "Windows/build-installer.ps1")]
 files += sorted((root / "Windows").glob("*-更新说明.md"))
 files += sorted((root / "macOS").glob("*-更新说明.md"))
 files += sorted((root / "docs" / "screenshots").glob("*.png"))

@@ -239,6 +239,61 @@ enum PortalScript {
         let formattedHost = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
         return "\(scheme)://\(formattedHost)\(port != nil && port != defaultPort ? ":\(port!)" : "")"
     }
+    static func inContext(_ script: String, profile: CampusProfile) throws -> String {
+        guard let url = profile.validPortalURL, let allowedOrigin = origin(url) else { throw AppError.message("认证地址无效。") }
+        func json(_ value: String) throws -> String {
+            String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]), as: UTF8.self)
+        }
+        return try contextScript.replacingOccurrences(of: "/*CONTEXT_ORIGIN*/", with: json(allowedOrigin))
+            .replacingOccurrences(of: "/*CONTEXT_FALLBACK*/", with: "'missing-fields'")
+            .replacingOccurrences(of: "/*CONTEXT_PASSWORD_SELECTOR*/", with: json(""))
+            .replacingOccurrences(of: "/*CONTEXT_SCRIPT*/", with: script)
+    }
+    static let contextScript = #"""
+    ((run) => {
+      const origin = /*CONTEXT_ORIGIN*/;
+      const fallback = /*CONTEXT_FALLBACK*/;
+      if (location.origin !== origin) return typeof fallback === 'boolean' ? false : 'wrong-origin';
+      const selector = /*CONTEXT_PASSWORD_SELECTOR*/ || 'input[type="password"]';
+      const candidates = [], leaves = [];
+      let count = 0, exhausted = false;
+      const visit = (target, depth) => {
+        if (depth > 8 || ++count > 64) { exhausted = true; return; }
+        try {
+          if (target.location.origin !== origin) return;
+          const doc = target.document;
+          // Prefer a form on this document over embedded ancillary content.
+          // Hidden password controls are intentional on older CMCC portals.
+          if (doc.querySelector(selector)) { candidates.push(target); return; }
+          let children = 0;
+          for (const frame of doc.querySelectorAll('frame,iframe')) {
+            const style = target.getComputedStyle(frame);
+            if (![...frame.getClientRects()].some(rect => rect.width > 0 && rect.height > 0) || style.display === 'none' ||
+                style.visibility === 'hidden' || style.visibility === 'collapse') continue;
+            children++;
+            visit(frame.contentWindow, depth + 1);
+          }
+          if (!children) leaves.push(target);
+        } catch (_) { /* Cross-origin and sandboxed frames never receive credentials. */ }
+      };
+      const direct = () => run(window, document, location, HTMLInputElement, globalThis.HTMLSelectElement,
+        globalThis.HTMLOptGroupElement, globalThis.Event, globalThis.FocusEvent, globalThis.MouseEvent, globalThis.getComputedStyle);
+      let hasFrames;
+      try { hasFrames = !!document.querySelector('frame,iframe'); document.querySelector(selector); }
+      catch (_) { return direct(); }
+      if (!hasFrames) return direct();
+      visit(window, 0);
+      const target = candidates.length === 1 ? candidates[0] :
+        candidates.length === 0 && leaves.length === 1 ? leaves[0] : null;
+      if (!target || exhausted) return fallback;
+      return run(target, target.document, target.location, target.HTMLInputElement,
+        target.HTMLSelectElement, target.HTMLOptGroupElement, target.Event,
+        target.FocusEvent, target.MouseEvent, target.getComputedStyle.bind(target));
+    })(function(window, document, location, HTMLInputElement, HTMLSelectElement,
+        HTMLOptGroupElement, Event, FocusEvent, MouseEvent, getComputedStyle) {
+      return /*CONTEXT_SCRIPT*/;
+    })
+    """#
     static func build(profile: CampusProfile, password: String, statusOnly: Bool = false) throws -> String {
         guard let url = profile.validPortalURL, let origin = origin(url) else { throw AppError.message("请先保存认证地址。") }
         let payload: [String: Any] = ["origin": origin, "username": profile.username, "password": password,
@@ -247,7 +302,7 @@ enum PortalScript {
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let json = String(decoding: data, as: UTF8.self)
         // Credentials are supplied to the current page only after native SSID + origin checks.
-        return """
+        let script = """
         (() => {
           const cfg = \(json);
           if (location.origin !== cfg.origin) return 'wrong-origin';
@@ -271,7 +326,7 @@ enum PortalScript {
           const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
           let user, pass, submit, portalUser, portalPass, portalButton;
           const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
-            input === portalPass ? document.querySelector('#pwd_tip') : null;
+            input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : null;
           const available = input => editable(input) && (visible(input) ||
             (portalButton && visible(tipFor(input))));
           try {
@@ -283,6 +338,18 @@ enum PortalScript {
             if (!editable(portalUser) || portalUser.type !== 'text' ||
                 !editable(portalPass) || portalPass.type !== 'password' || !portalButton) {
               portalUser = portalPass = portalButton = null;
+            }
+            // Inspected CMCC union page: use its original prompt and checkform handler.
+            if (!portalButton) {
+              const button = document.querySelector('#login_btn');
+              const prompt = document.querySelector('#passwordIn_1');
+              const account = document.querySelector('#username');
+              const secret = document.querySelector('#pwd');
+              if (editable(account) && account.type === 'text' && editable(secret) && secret.type === 'password' &&
+                  editable(prompt) && prompt.type === 'text' && /checkform\\s*\\(/.test(button?.getAttribute('onclick') || '') &&
+                  typeof window.checkform === 'function' && typeof window.hidePassword === 'function') {
+                portalUser = account; portalPass = secret; portalButton = button;
+              }
             }
             // Unknown ePortal variants retain full-load behavior; only inspected initialization is accelerated.
             if (portalButton && !ready && document.readyState !== 'complete') return 'waiting-ready';
@@ -300,6 +367,7 @@ enum PortalScript {
           if (!available(user) || !available(pass)) return 'missing-fields';
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
           for (const [input, value] of [[user,cfg.username],[pass,cfg.password]]) {
+            if (input === portalPass && portalButton?.id === 'login_btn' && visible(tipFor(input))) tipFor(input).click();
             if (!visible(input)) {
               const tip = tipFor(input);
               if (visible(tip)) {
@@ -447,6 +515,9 @@ enum PortalScript {
           // School handlers can reject/reset a value; never report success or submit it.
           if (!editable(user) || !editable(pass) || !visible(user) || !visible(pass) ||
               user.value !== cfg.username || pass.value !== cfg.password) return 'missing-fields';
+          const unionCode = document.querySelector('#ps[name="psNum"]');
+          if (portalButton?.id === 'login_btn' && unionCode && visible(unionCode) &&
+              (!unionCode.value.trim() || unionCode.value.trim() === '请输入验证码')) return 'manual-required';
           if (!cfg.submit) return 'filled';
           if (!visible(submit)) return 'missing-submit';
           if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
@@ -524,6 +595,7 @@ enum PortalScript {
           return 'submitted';
         })()
         """.replacingOccurrences(of: "  /*CAMPUS_AGREEMENTS*/", with: agreementScript)
+        return try inContext(script, profile: profile)
     }
     static let agreementScript = #"""
       // Activate required login checkboxes through school handlers.

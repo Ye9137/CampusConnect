@@ -60,7 +60,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
            let bootstrap = try? String(contentsOf: resource, encoding: .utf8),
            let json = try? JSONSerialization.data(withJSONObject: origin, options: [.fragmentsAllowed]) {
             let script = bootstrap.replacingOccurrences(of: "/*CAMPUS_ORIGIN*/", with: String(decoding: json, as: UTF8.self))
-            webView.configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            webView.configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         }
         loading = true
         message = profile.validPortalURL == nil ? "正在探测认证页…" : "正在打开校园网认证页…"

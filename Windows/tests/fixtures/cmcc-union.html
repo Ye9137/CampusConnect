@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>本地校园宽带测试</title>
+<!-- Inspected CMCC unionautologin markup; invented account and challenge. No network requests. -->
+<style>body{font:18px sans-serif;padding:40px;background:#eaf4ff}input{display:block;margin:12px;padding:10px}#password{position:relative}#passwordIn_1{position:absolute;top:-12px;left:0}#login_btn{background:#1684df;width:180px;height:48px;cursor:pointer}#randomimage{width:180px;height:60px}</style>
+<div id="list"><form id="inputForm" onsubmit="event.preventDefault();loginCalls++">
+<div id="admin"><input id="username" name="name" type="text" value="请输入上网账号" onfocus="if(value==='请输入上网账号')value=''" maxlength="16"></div>
+<div id="password" onclick="hidePassword()"><input id="passwordIn_1" name="password" type="text" value="请输入上网密码"><input id="pwd" name="pass" type="password" maxlength="16"></div>
+<div id="code"><input id="ps" name="psNum" type="text" value="请输入验证码" maxlength="6" onfocus="if(value==='请输入验证码')value=''"><img id="randomimage" alt="测试校验图"></div>
+</form><label><input id="autocheckbox" type="checkbox" style="display:inline">记住账号密码</label>
+<div id="login_btn" onclick="checkform(this)"></div></div>
+<script>
+window.loginCalls=0;window.handlerCalls=0;window.reveals=0;
+function hidePassword(){reveals++;document.getElementById('passwordIn_1').style.display='none';document.getElementById('pwd').focus()}
+function checkform(obj){handlerCalls++;if(!username.value||!pwd.value||!ps.value||ps.value==='请输入验证码')return false;inputForm.requestSubmit()}
+const canvas=document.createElement('canvas');canvas.width=180;canvas.height=60;const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,180,60);ctx.fillStyle='black';ctx.font='32px sans-serif';ctx.fillText('aB7Z12',10,42);randomimage.src=canvas.toDataURL();
+</script></html>

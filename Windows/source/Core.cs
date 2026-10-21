@@ -136,11 +136,22 @@ public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset starte
 
 public static class PortalScript
 {
+    public static string InContext(CampusProfile profile, string script, string fallback = "'missing-fields'")
+    {
+        using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalContext.js")
+            ?? throw new InvalidOperationException("缺少框架页认证脚本。");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd()
+            .Replace("/*CONTEXT_ORIGIN*/", JsonSerializer.Serialize(CampusProfile.Origin(profile.PortalUrl)), StringComparison.Ordinal)
+            .Replace("/*CONTEXT_FALLBACK*/", fallback, StringComparison.Ordinal)
+            .Replace("/*CONTEXT_PASSWORD_SELECTOR*/", JsonSerializer.Serialize(""), StringComparison.Ordinal)
+            .Replace("/*CONTEXT_SCRIPT*/", script, StringComparison.Ordinal);
+    }
     // No credentials: intermediate redirect/loading pages must not pin the chain.
     public static string LoginFormProbe(CampusProfile profile)
     {
         var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = "" });
-        return """
+        var script = """
         (() => {
           const cfg = /*PROBE*/;
           if (location.origin !== cfg.origin || document.readyState === 'loading') return false;
@@ -148,20 +159,21 @@ public static class PortalScript
             const inputs = document.querySelectorAll(cfg.passwordSelector || 'input[type="password"]');
             return [...inputs].some(input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly &&
               (input.getClientRects().length > 0 ||
-               (input.id === 'pwd' && document.querySelector('#pwd_tip')?.getClientRects().length > 0) ||
+               (input.id === 'pwd' && (document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1'))?.getClientRects().length > 0) ||
                (input.id === 'password' && input.form?.id === 'login_form' &&
                 input.form.querySelector('#user_name[name="username"]') && input.form.querySelector('#login_submit') &&
                 input.form.querySelector('input#tx[type="text"]')?.getClientRects().length > 0)));
           } catch (_) { return true; } // Let the normal script report invalid selectors.
         })()
         """.Replace("/*PROBE*/", config, StringComparison.Ordinal);
+        return InContext(profile, script, "false");
     }
 
     public static string BuildCaptchaImage(CampusProfile profile, string image)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
         var payload = JsonSerializer.Serialize(new { origin, image });
-        return """
+        var script = """
         (() => {
           const response = /*RESPONSE*/;
           if (location.origin !== response.origin) return 'wrong-origin';
@@ -169,6 +181,7 @@ public static class PortalScript
           return 'captcha-image-ready';
         })()
         """.Replace("/*RESPONSE*/", payload, StringComparison.Ordinal);
+        return InContext(profile, script, "'wrong-origin'");
     }
 
     public static string BuildCaptchaProbe(CampusProfile profile)
@@ -179,7 +192,7 @@ public static class PortalScript
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
             ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
         using var reader = new StreamReader(stream);
-        return """
+        var script = """
         (() => {
           const cfg = /*CONFIG*/;
           if (location.origin !== cfg.origin) return 'wrong-origin';
@@ -196,6 +209,8 @@ public static class PortalScript
             const zportalSubmit = pass?.form?.id === 'login_form' && pass.id === 'password' && user?.id === 'user_name'
               ? pass.form.querySelector('button#login_submit[type="button"]') : null;
             submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : zportalSubmit ||
+              (document.querySelector('#ps[name="psNum"]') && document.querySelector('#randomimage') &&
+                /checkform\s*\(/.test(document.querySelector('#login_btn')?.getAttribute('onclick') || '') ? document.querySelector('#login_btn') : null) ||
               [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')]
               .filter(e => e.getClientRects().length > 0).find(e => e.type === 'submit' ||
                 /^(登录|登陆|认证|连接|login|signin|connect)$/i.test((e.innerText || e.value || '').replace(/\s+/g,'')));
@@ -205,6 +220,7 @@ public static class PortalScript
           return 'captcha-not-found';
         })()
         """.Replace("/*CONFIG*/", payload, StringComparison.Ordinal).Replace("  /*CAPTCHA*/", reader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
+        return InContext(profile, script, "'wrong-origin'");
     }
 
     public static string Build(CampusProfile profile, string password, bool statusOnly = false)
@@ -223,8 +239,9 @@ public static class PortalScript
         using var captchaStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
             ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
         using var captchaReader = new StreamReader(captchaStream);
-        return reader.ReadToEnd().Replace("/*CAMPUS_CONFIG*/", payload, StringComparison.Ordinal)
+        var script = reader.ReadToEnd().Replace("/*CAMPUS_CONFIG*/", payload, StringComparison.Ordinal)
             .Replace("  /*CAMPUS_CAPTCHA*/", captchaReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_AGREEMENTS*/", agreementReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
+        return InContext(profile, script, "'wrong-origin'");
     }
 }

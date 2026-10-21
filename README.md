@@ -15,7 +15,8 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows / macOS 2.1.4 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.4) · [Windows 更新说明](Windows/2.1.4-更新说明.md) · [macOS 更新说明](macOS/2.1.4-更新说明.md)。有线无线分别记住配置，自动连接按 5 秒检查和恢复，其他 Wi-Fi 保持当前连接。
+**Windows / macOS 2.1.5 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.5) · [Windows 更新说明](Windows/2.1.5-更新说明.md) · [macOS 更新说明](macOS/2.1.5-更新说明.md)。新增框架内认证页识别，修复 CMCC 页面账号、密码、验证码及图片式登录按钮适配。
+
 
 [![Build](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml/badge.svg)](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -23,6 +24,14 @@
 由 [Ye9137](https://github.com/Ye9137) 维护，使用 MIT 许可证开源。
 
 分别为 macOS 和 Windows 制作的桌面校园网连接工具。请在设置中填写自己的校园 Wi-Fi 和认证地址；有线与无线分别保存，未配置时保持空白。
+
+## Windows / macOS 2.1.5 正式版
+
+- 识别同源 `frame / iframe` 内的认证表单及嵌套登录页面。
+- 适配 CMCC 旧式校园宽带页面的密码提示层、图片式登录按钮、验证码框及 Windows 验证码窗口。
+- 外站、隔离、隐藏或多表单框架停止自动填写；保留原有学校登录事件和验证码失效检查。
+
+该 CMCC 页面请将“运营商 / 服务选项”留空。macOS 验证码在学校页面手动输入；真实校园网认证仍需现场验证。详见平台更新说明。
 
 ## Windows / macOS 2.1.4 正式版
 
