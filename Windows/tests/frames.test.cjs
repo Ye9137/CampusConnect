@@ -2,8 +2,8 @@ const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const fixture=fs.readFileSync(path.join(__dirname,'fixtures/cmcc-union.html'),'utf8');
 const scripts=JSON.parse(fs.readFileSync(path.join(__dirname,'../work/frame-scripts.json'),'utf8'));
-const context=fs.readFileSync(path.join(__dirname,'../source/PortalContext.js'),'utf8');
-const swift=fs.readFileSync(path.join(__dirname,'../../macOS/source/Core.swift'),'utf8');
+const context=fs.readFileSync(path.join(__dirname,'../source/PortalContext.js'),'utf8').replace(/\r\n/g,'\n');
+const swift=fs.readFileSync(path.join(__dirname,'../../macOS/source/Core.swift'),'utf8').replace(/\r\n/g,'\n');
 assert.equal(swift.split('    static let contextScript = #"""\n')[1].split('    """#')[0].split('\n').map(l=>l.startsWith('    ')?l.slice(4):l).join('\n').trim(),context.trim());
 const wrap=(script,fallback="'missing-fields'")=>context.replace('/*CONTEXT_ORIGIN*/','"http://portal.test"').replace('/*CONTEXT_FALLBACK*/',fallback).replace('/*CONTEXT_PASSWORD_SELECTOR*/','""').replace('/*CONTEXT_SCRIPT*/',script);
 (async()=>{
