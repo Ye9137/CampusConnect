@@ -17,6 +17,7 @@ import JavaScriptCore
             .appendingPathComponent("work/storage-test-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: localDirectory) }
         var storedProfile = CampusProfile()
+        storedProfile.ssid = "Fixture-Campus"; storedProfile.portalURL = "http://portal.test"
         storedProfile.username = "test-account"
         storedProfile.serviceOption = "联通接入服务"
         let secrets = Secrets(wifi: "test-wifi", portal: "test-portal")
@@ -94,15 +95,22 @@ import JavaScriptCore
         expect(PortalFillRetry.shouldRetry(result: "missing-service", scriptFailed: false, attempt: 1), "wait for delayed service options")
         expect(!PortalFillRetry.shouldRetry(result: "missing-service", scriptFailed: false, attempt: 200), "service waiting is bounded")
         var escapingProfile = CampusProfile()
+        escapingProfile.portalURL = "http://portal.test"
         escapingProfile.serviceOption = "联通接入服务'\"\n"
         let serviceScript = try PortalScript.build(profile: escapingProfile, password: "dummy")
         let payload = serviceScript.components(separatedBy: "const cfg = ")[1].components(separatedBy: ";")[0]
         let serviceJSON = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as! [String: Any]
         expect(serviceJSON["serviceOption"] as? String == escapingProfile.serviceOption, "service option JSON escaping")
+        for empty in [CampusProfile(), oldProfile, CampusProfile.empty(wired: false), CampusProfile.empty(wired: true)] {
+            expect([empty.ssid, empty.portalURL, empty.username, empty.serviceOption, empty.wifiUsername, empty.ethernetName, empty.broadbandName, empty.authenticationClient].allSatisfy(\.isEmpty), "all editable fields and missing legacy values default to blank")
+            expect(!empty.automatic, "blank configuration never starts automatic connections")
+        }
+        expect(Secrets().wifi.isEmpty && Secrets().portal.isEmpty, "new passwords default to blank")
         var profile = CampusProfile()
+        profile.ssid = "HNPI-STU"; profile.portalURL = "http://192.168.0.123"
         try profile.validate()
-        expect(profile.ssid == "HNPI-STU", "target SSID default")
-        expect(profile.validPortalURL?.host == "192.168.0.123", "portal URL default")
+        expect(profile.ssid == "HNPI-STU", "configured target SSID preserved")
+        expect(profile.validPortalURL?.host == "192.168.0.123", "configured portal URL preserved")
         profile.portalURL = "javascript:alert(1)"
         expect(profile.validPortalURL == nil, "reject non-web URL")
         profile.portalURL = "https://a:b@example.com"
@@ -121,11 +129,11 @@ import JavaScriptCore
         wired.ssid = ""; wired.joinMode = .enterprise
         try wired.validate() // Stale Wi-Fi enterprise fields are irrelevant in wired mode.
         expect(wired.isWired, "empty SSID selects wired mode")
-        expect(!CampusProfile().isWired, "existing SSID remains Wi-Fi mode")
+        expect(!profile.isWired, "existing SSID remains Wi-Fi mode")
         expect(wired.matchesNetwork(currentSSID: nil, wiredAvailable: true), "wired authentication without Wi-Fi")
         expect(!wired.matchesNetwork(currentSSID: "HNPI-STU", wiredAvailable: false), "Wi-Fi cannot stand in for disconnected Ethernet")
-        expect(!CampusProfile().matchesNetwork(currentSSID: "Other", wiredAvailable: true), "Ethernet cannot bypass SSID guard")
-        expect(CampusProfile().matchesNetwork(currentSSID: "HNPI-STU", wiredAvailable: false), "original Wi-Fi authentication allowed")
+        expect(!profile.matchesNetwork(currentSSID: "Other", wiredAvailable: true), "Ethernet cannot bypass SSID guard")
+        expect(profile.matchesNetwork(currentSSID: "HNPI-STU", wiredAvailable: false), "original Wi-Fi authentication allowed")
         try LocalStore.save(profile: wired, secrets: secrets, directory: localDirectory)
         let wiredReloaded = try LocalStore.load(directory: localDirectory)
         expect(wiredReloaded.profile.isWired && wiredReloaded.profile.ssid.isEmpty, "wired config reload")

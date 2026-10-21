@@ -60,7 +60,7 @@ enum Page: String, CaseIterable {
     private var readingBackgroundConnection = false
 
     init(preview: Bool = false) {
-        let configuration = preview ? LocalConfiguration(profile: CampusProfile()) :
+        let configuration = preview ? LocalConfiguration(profile: CampusProfile.empty(wired: false)) :
             ((try? LocalStore.load()) ?? LocalConfiguration(profile: CampusProfile.empty(wired: false)))
         let loaded = configuration.profile
         connectionDrafts = ConnectionDrafts(configuration: configuration)
@@ -570,7 +570,7 @@ struct RootView: View {
                         Text(model.status).font(.system(size: 11)).lineLimit(2)
                     }
                     Spacer()
-                    Text("v2.1.5 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("v2.1.6 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 24).padding(.vertical, 12)
             }.background(Color(nsColor: .textBackgroundColor))
         }.frame(minWidth: 980, minHeight: 700).tint(accent).textSelection(.disabled)
@@ -749,8 +749,8 @@ struct RootView: View {
                                     SecureField("输入上网密码", text: $model.portalPassword).textFieldStyle(.roundedBorder)
                                 }
                             }
-                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "例如：中国移动 或 联通接入服务")
-                            Text("填写认证网页中的完整选项名称，例如中国移动、中国联通、中国电信或联通接入服务。网页需要选择运营商时请填写，保存后重新认证；网页没有此选项时留空。")
+                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "可留空，按网页要求填写")
+                            Text("默认留空。仅当认证网页要求选择运营商或服务时，填写网页上的完整选项名称；网页没有此选项时保持空白。")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                             Toggle("自动填写后点击登录", isOn: $model.draft.autoSubmit)
                         }

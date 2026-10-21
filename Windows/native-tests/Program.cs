@@ -16,6 +16,7 @@ internal static class Program
         try {
             var fresh = LocalStore.LoadFrom(directory);
             Expect(fresh.Profile.ConnectionMode == "wifi" && fresh.Profile.Ssid == "" && fresh.Password == "", "fresh storage has no fabricated school target");
+            Expect(new[] { fresh.Profile.PortalUrl, fresh.Profile.Username, fresh.Profile.ServiceOption, fresh.Profile.EthernetName, fresh.Profile.BroadbandName, fresh.Profile.AuthenticationClient }.All(string.IsNullOrEmpty), "fresh storage leaves all editable fields blank");
             var wifi = new CampusProfile { Ssid = "Custom-Campus", Username = "fixture-wifi-user", PortalUrl = "https://wifi.test/login", ServiceOption = "无线服务" };
             var wired = new CampusProfile { ConnectionMode = "wired", Ssid = "", Username = "fixture-wired-user", PortalUrl = "https://wired.test/login", EthernetName = "Ethernet fixture" };
             LocalStore.SaveTo(directory, wifi, "fixture-wifi-secret");

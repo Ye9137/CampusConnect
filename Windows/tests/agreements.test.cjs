@@ -108,6 +108,41 @@ const script = extra => template.replace('/*CAMPUS_CONFIG*/', JSON.stringify({ .
     await load('<input id="notice" type="checkbox" onclick="event.preventDefault()"><span>本人承诺遵守网络安全法</span>');
     equal(await page.evaluate(script()), 'waiting-agreement');
     equal(await page.evaluate(() => submissions), 0);
+    // Screenshot regression: a missing service must not skip the pledge checkbox.
+    html = fs.readFileSync(path.join(__dirname, 'fixtures/network-pledge.html'), 'utf8');
+    await page.goto('http://portal.test/login');
+    await page.locator('#remember').check();
+    equal(await page.evaluate(script({serviceOption:'中国移动'})), 'missing-service');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.locator('#remember').isChecked(), true);
+    equal(await page.evaluate(() => submissions), 0);
+    equal(await page.evaluate(() => pledgeEvents.join(',')), 'click,input,change');
+    equal(await page.evaluate(script({serviceOption:'中国移动'})), 'missing-service');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.evaluate(() => pledgeEvents.join(',')), 'click,input,change');
+    equal(await page.evaluate(script({serviceOption:''})), 'submitted');
+    equal(await page.evaluate(() => pledgeAtSubmit), true);
+    equal(await page.evaluate(() => submissions), 1);
+    // An unselected operator still waits, while the independent pledge is checked.
+    await load('<select><option value="">选择运营商</option><option value="cmcc">中国移动</option></select><div><input id="notice" type="checkbox"><span>本人承诺遵守网络安全法</span></div><label><input id="remember" type="checkbox">记住密码</label>');
+    equal(await page.evaluate(script()), 'service-required');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.locator('#remember').isChecked(), false);
+    equal(await page.evaluate(() => submissions), 0);
+    equal(await page.evaluate(script()), 'service-required');
+    equal(await page.evaluate(() => agreementClicks), 1);
+    // Keep service-before-agreement order: page change handlers may reset consent.
+    await load('<select onchange="document.getElementById(&quot;notice&quot;).checked=false"><option value="">选择运营商</option><option value="cmcc">中国移动</option></select><label><input id="notice" type="checkbox" checked>本人承诺遵守网络安全法</label>');
+    equal(await page.evaluate(script({serviceOption:'中国移动'})), 'submitted');
+    equal(await page.locator('#notice').isChecked(), true);
+    equal(await page.evaluate(() => agreementClicks), 1);
+    // Rejected or disabled consent never turns a service error into a login.
+    await load('<label><input id="notice" type="checkbox" disabled>本人承诺遵守网络安全法</label>');
+    equal(await page.evaluate(script({serviceOption:'中国移动'})), 'agreement-required');
+    equal(await page.evaluate(() => submissions), 0);
+    await load('<label><input id="notice" type="checkbox" onclick="event.preventDefault()">本人承诺遵守网络安全法</label>');
+    equal(await page.evaluate(script({serviceOption:'中国移动'})), 'waiting-agreement');
+    equal(await page.evaluate(() => submissions), 0);
     console.log(`PASS: ${checks} agreement checks (required, terms, hidden controls, event handlers, duplicate prevention, manual blockers, origin, and unrelated options).`);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

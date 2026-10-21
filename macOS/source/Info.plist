@@ -6,14 +6,14 @@
 <key>CFBundleName</key><string>CampusConnect</string>
 <key>CFBundleDisplayName</key><string>校园网助手</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>2.1.5</string>
-<key>CFBundleGetInfoString</key><string>CampusConnect 2.1.5</string>
-<key>CFBundleVersion</key><string>21502</string>
+<key>CFBundleShortVersionString</key><string>2.1.6</string>
+<key>CFBundleGetInfoString</key><string>CampusConnect 2.1.6</string>
+<key>CFBundleVersion</key><string>21600</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSLocalNetworkUsageDescription</key><string>通过 Wi-Fi 或有线网络直接访问学校的本地认证服务器，以完成校园网上网登录。</string>
-<key>NSLocationUsageDescription</key><string>用于读取当前及附近 Wi-Fi 名称，识别 HNPI-STU 并自动连接校园网。</string>
+<key>NSLocationUsageDescription</key><string>用于读取当前及附近 Wi-Fi 名称，识别并自动连接已设置的校园网。</string>
 <key>NSLocationWhenInUseUsageDescription</key><string>用于读取当前及附近 Wi-Fi 名称，识别并自动连接已设置的校园网。</string>
 <key>NSAppTransportSecurity</key><dict>
 <key>NSAllowsArbitraryLoadsInWebContent</key><true/>

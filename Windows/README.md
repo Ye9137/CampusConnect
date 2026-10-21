@@ -1,5 +1,13 @@
 # Windows 版
 
+## 2.1.6 正式版
+
+[下载 Windows / macOS 2.1.6](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.6) · [更新说明](2.1.6-更新说明.md)
+
+支持说明补充 **广东海洋大学**。Wi-Fi 名称、账号、密码、认证地址、运营商 / 服务等填写项默认全部为空，旧配置缺失字段不再补入学校示例值；已保存信息继续保留。网页没有运营商 / 服务控件时保持空白。
+
+Windows 同时修复服务选项错误导致“本人承诺……”框被跳过的问题。
+
 ## 2.1.5 正式版
 
 [下载 Windows / macOS 2.1.5](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.5) · [更新说明](2.1.5-更新说明.md)

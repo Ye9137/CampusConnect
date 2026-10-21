@@ -54,7 +54,11 @@ Expect(!blankWifi.IsWired && blankWifi.Ssid == "" && blankWifi.PortalUrl == "", 
 Invalid(blankWifi);
 Expect(ConnectionConfiguration.Empty(true).IsWired, "new wired mode has explicit selection");
 Invalid(legacyWifi with { ConnectionMode = "invalid" });
-var profile = new CampusProfile(); profile.Validate();
+foreach (var empty in new[] { new CampusProfile(), JsonSerializer.Deserialize<CampusProfile>("{}")!, ConnectionConfiguration.Empty(false), ConnectionConfiguration.Empty(true) }) {
+    Expect(new[] { empty.Ssid, empty.PortalUrl, empty.Username, empty.ServiceOption, empty.EthernetName, empty.BroadbandName, empty.AuthenticationClient }.All(string.IsNullOrEmpty), "all editable fields default to blank, including missing legacy values");
+    Expect(!empty.Automatic, "blank configuration never starts automatic connections");
+}
+var profile = new CampusProfile { Ssid = "HNPI-STU", PortalUrl = "http://192.168.0.123" }; profile.Validate();
 Expect(profile.ServiceOption == "", "service selection defaults to blank");
 var serviceProfile = JsonSerializer.Deserialize<CampusProfile>(JsonSerializer.Serialize(profile with { ServiceOption = "联通接入服务" }))!;
 Expect(serviceProfile.ServiceOption == "联通接入服务", "service selection survives configuration round trip");

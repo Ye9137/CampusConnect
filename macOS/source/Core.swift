@@ -22,7 +22,7 @@ enum WiredAuth: String, Codable, CaseIterable, Identifiable {
 }
 
 struct CampusProfile: Codable, Equatable {
-    var ssid = "HNPI-STU"
+    var ssid = ""
     var connectionMode: String?
     var wiredAuth: WiredAuth = .web
     var ethernetName = ""
@@ -38,7 +38,7 @@ struct CampusProfile: Codable, Equatable {
     var joinMode: JoinMode = .open
     var wifiUsername = ""
     var portalEnabled = true
-    var portalURL = "http://192.168.0.123"
+    var portalURL = ""
     var username = ""
     var serviceOption = ""
     var autoSubmit = true
@@ -52,7 +52,7 @@ struct CampusProfile: Codable, Equatable {
     init() {}
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        ssid = try values.decodeIfPresent(String.self, forKey: .ssid) ?? "HNPI-STU"
+        ssid = try values.decodeIfPresent(String.self, forKey: .ssid) ?? ""
         connectionMode = try values.decodeIfPresent(String.self, forKey: .connectionMode)
         wiredAuth = try values.decodeIfPresent(WiredAuth.self, forKey: .wiredAuth) ?? .web
         ethernetName = try values.decodeIfPresent(String.self, forKey: .ethernetName) ?? ""
@@ -61,7 +61,7 @@ struct CampusProfile: Codable, Equatable {
         joinMode = try values.decodeIfPresent(JoinMode.self, forKey: .joinMode) ?? .open
         wifiUsername = try values.decodeIfPresent(String.self, forKey: .wifiUsername) ?? ""
         portalEnabled = try values.decodeIfPresent(Bool.self, forKey: .portalEnabled) ?? true
-        portalURL = try values.decodeIfPresent(String.self, forKey: .portalURL) ?? "http://192.168.0.123"
+        portalURL = try values.decodeIfPresent(String.self, forKey: .portalURL) ?? ""
         username = try values.decodeIfPresent(String.self, forKey: .username) ?? ""
         serviceOption = try values.decodeIfPresent(String.self, forKey: .serviceOption) ?? ""
         autoSubmit = try values.decodeIfPresent(Bool.self, forKey: .autoSubmit) ?? true

@@ -99,138 +99,144 @@
       input.dispatchEvent(new Event('change', {bubbles:true}));
     }
   }
-  const serviceName = (cfg.serviceOption || '').trim();
-  // Some portals place the operator dropdown outside the credentials form.
-  // Include unassociated controls, but never select a service in another form.
-  const serviceSelects = [...document.querySelectorAll('select')]
-    .filter(select => visible(select) && !select.multiple && (!select.form || select.form === pass.form));
-  const servicePlaceholder = text => /^(请)?选择((运营商|服务)(选项)?|选项)[：:….。]*$/.test((text || '').replace(/\s/g, ''));
-  const serviceText = control => (control instanceof HTMLInputElement ? control.value || control.placeholder : control.textContent || '').trim();
-  const serviceDescriptor = control => [control.id, control.getAttribute('name'), control.getAttribute('aria-label'),
-    control.getAttribute('aria-controls'), ...(control.getAttribute('aria-labelledby') || '').split(/\s+/)
-      .map(id => document.getElementById(id)?.textContent || '')].join(' ');
-  const serviceOpeners = [...document.querySelectorAll('[role="combobox"],[aria-haspopup],[aria-controls],button,[role="button"]')]
-    .filter(control => !(control instanceof HTMLSelectElement) && visible(control) &&
-      control.getAttribute('aria-disabled') !== 'true' && (!control.closest('form') || control.closest('form') === pass.form) &&
-      (servicePlaceholder(serviceText(control)) || window.__campusCustomServiceMenus?.has(control) ||
-        (control.matches('[role="combobox"],[aria-haspopup]') &&
-          (serviceText(control) === serviceName || /运营商|服务|operator|carrier|service/i.test(serviceDescriptor(control))))));
-  for (const opener of serviceOpeners) window.__campusRegisterServiceMenu?.(opener);
-  const eportalOpener = document.querySelector('#serviceShowHideTop');
-  window.__campusRegisterServiceMenu?.(eportalOpener);
-  if (!serviceName && (serviceSelects.some(select => servicePlaceholder(select.selectedOptions[0]?.textContent)) ||
-      serviceOpeners.some(control => servicePlaceholder(serviceText(control))))) {
-    return 'service-required';
-  }
-  if (serviceName) {
-    const normalized = text => (text || '').trim();
-    const serviceValue = document.querySelector('#net_access_type');
-    const serviceLabel = document.querySelector('#selectDisname');
-    if (portalButton && serviceValue && serviceLabel && !(serviceValue instanceof HTMLSelectElement)) {
-      // Use the school's existing menu click handlers, including domain/operator updates.
-      // Opening the menu can lazily fetch services for the account just filled above.
-      if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) {
-        const opener = document.querySelector('#serviceShowHideTop');
-        const opened = window.__campusServiceMenus ||= new WeakMap();
-        if (visible(opener) && opened.get(opener) !== cfg.username) {
-          opened.set(opener, cfg.username);
-          opener.click();
-        }
-        const choices = [...document.querySelectorAll('#serviceShowHide [id^="bch_service_"]')]
-          .filter(row => visible(row) && row.getAttribute('aria-disabled') !== 'true' &&
-            normalized((row.querySelector('[id^="_service_"]') || row).textContent) === serviceName);
-        if (choices.length !== 1) return 'missing-service';
-        choices[0].click();
-        if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return 'missing-service';
-      }
-      window.__campusCollapseServiceMenu?.(eportalOpener);
-    } else {
-      // Operator choices can also be horizontal native or accessible radios,
-      // including controls placed above and outside the credentials form.
-      const radios = [...document.querySelectorAll('input[type="radio"],[role="radio"]')];
-      const radioChoices = radios.filter(control => {
-        if (!(control instanceof HTMLInputElement) && control.querySelector('input[type="radio"]')) return false;
-        const form = control.form || control.closest('form');
-        if (form && form !== pass.form) return false;
-        if (control.matches(':disabled') || control.closest('[aria-disabled="true"]')) return false;
-        const labels = [...(control.labels || [])];
-        const wrapper = control.closest('label,[role="radio"]');
-        if (wrapper && !labels.includes(wrapper)) labels.push(wrapper);
-        for (const id of (control.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)) {
-          const label = document.getElementById(id);
-          if (label) labels.push(label);
-        }
-        if (!visible(control) && !labels.some(visible)) return false;
-        const names = [control.getAttribute('aria-label'), ...labels.map(label => label.textContent)];
-        if (control.getAttribute('role') === 'radio') names.push(control.textContent);
-        // Older pages use bare text or FONT/SPAN text after each input.
-        // Localization comments and indentation can sit between the two.
-        let sibling = control.nextSibling;
-        while (sibling && (sibling.nodeType === 8 ||
-            (sibling.nodeType === 3 && !normalized(sibling.textContent)))) sibling = sibling.nextSibling;
-        if (sibling?.nodeType === 3) names.push(sibling.textContent);
-        if (sibling?.nodeType === 1 && sibling.matches('font,span,label') &&
-            !sibling.querySelector('input,button,[role="radio"]')) names.push(sibling.textContent);
-        return names.some(name => normalized(name) === serviceName);
-      });
-      const choices = serviceSelects
-        .flatMap(select => [...select.options].filter(option => !option.disabled &&
-          !(option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled) &&
-          normalized(option.textContent) === serviceName).map(option => ({select, option})));
-      if (choices.length + radioChoices.length > 1) return 'missing-service';
-      if (radioChoices.length === 1) {
-        const radio = radioChoices[0];
-        const checked = () => radio instanceof HTMLInputElement ? radio.checked : radio.getAttribute('aria-checked') === 'true';
-        if (!checked()) {
-          const previous = window.__campusServiceRadioAttempt;
-          if (!previous || previous.control !== radio || previous.username !== cfg.username || previous.serviceName !== serviceName) {
-            window.__campusServiceRadioAttempt = {control:radio, username:cfg.username, serviceName};
-            // Click through the school's handler; setting checked alone skips
-            // account-domain updates and other operator-specific page logic.
-            radio.click();
-          }
-        }
-        if (!radio.isConnected || !checked() || radio.matches(':disabled') ||
-            radio.closest('[aria-disabled="true"]')) return 'missing-service';
-      } else if (choices.length === 1) {
-        const {select, option} = choices[0];
-        if (select.selectedIndex !== option.index) {
-          select.selectedIndex = option.index;
-          select.dispatchEvent(new Event('input', {bubbles:true}));
-          select.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-        if (select.selectedOptions[0] !== option || select.disabled) return 'missing-service';
-        select.blur();
-      } else {
-        // Custom portals may create their choices only after opening the menu.
-        // Match the configured visible name, without a fixed carrier/value list.
-        if (serviceOpeners.length !== 1) return 'missing-service';
-        const opener = serviceOpeners[0];
-        if (serviceText(opener) !== serviceName) {
-          const opened = window.__campusCustomServiceMenus ||= new WeakMap();
-          const previous = opened.get(opener);
-          if ((!previous || previous.username !== cfg.username || previous.serviceName !== serviceName) &&
-              opener.getAttribute('aria-expanded') !== 'true') {
-            opened.set(opener, {username:cfg.username, serviceName});
+  // A service mismatch pauses submission, but must not skip the independent
+  // network pledge. Keep the school's service handlers before agreement checks.
+  const serviceStatus = (() => {
+    const serviceName = (cfg.serviceOption || '').trim();
+    // Some portals place the operator dropdown outside the credentials form.
+    // Include unassociated controls, but never select a service in another form.
+    const serviceSelects = [...document.querySelectorAll('select')]
+      .filter(select => visible(select) && !select.multiple && (!select.form || select.form === pass.form));
+    const servicePlaceholder = text => /^(请)?选择((运营商|服务)(选项)?|选项)[：:….。]*$/.test((text || '').replace(/\s/g, ''));
+    const serviceText = control => (control instanceof HTMLInputElement ? control.value || control.placeholder : control.textContent || '').trim();
+    const serviceDescriptor = control => [control.id, control.getAttribute('name'), control.getAttribute('aria-label'),
+      control.getAttribute('aria-controls'), ...(control.getAttribute('aria-labelledby') || '').split(/\s+/)
+        .map(id => document.getElementById(id)?.textContent || '')].join(' ');
+    const serviceOpeners = [...document.querySelectorAll('[role="combobox"],[aria-haspopup],[aria-controls],button,[role="button"]')]
+      .filter(control => !(control instanceof HTMLSelectElement) && visible(control) &&
+        control.getAttribute('aria-disabled') !== 'true' && (!control.closest('form') || control.closest('form') === pass.form) &&
+        (servicePlaceholder(serviceText(control)) || window.__campusCustomServiceMenus?.has(control) ||
+          (control.matches('[role="combobox"],[aria-haspopup]') &&
+            (serviceText(control) === serviceName || /运营商|服务|operator|carrier|service/i.test(serviceDescriptor(control))))));
+    for (const opener of serviceOpeners) window.__campusRegisterServiceMenu?.(opener);
+    const eportalOpener = document.querySelector('#serviceShowHideTop');
+    window.__campusRegisterServiceMenu?.(eportalOpener);
+    if (!serviceName && (serviceSelects.some(select => servicePlaceholder(select.selectedOptions[0]?.textContent)) ||
+        serviceOpeners.some(control => servicePlaceholder(serviceText(control))))) {
+      return 'service-required';
+    }
+    if (serviceName) {
+      const normalized = text => (text || '').trim();
+      const serviceValue = document.querySelector('#net_access_type');
+      const serviceLabel = document.querySelector('#selectDisname');
+      if (portalButton && serviceValue && serviceLabel && !(serviceValue instanceof HTMLSelectElement)) {
+        // Use the school's existing menu click handlers, including domain/operator updates.
+        // Opening the menu can lazily fetch services for the account just filled above.
+        if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) {
+          const opener = document.querySelector('#serviceShowHideTop');
+          const opened = window.__campusServiceMenus ||= new WeakMap();
+          if (visible(opener) && opened.get(opener) !== cfg.username) {
+            opened.set(opener, cfg.username);
             opener.click();
           }
-          const popupIds = (opener.getAttribute('aria-controls') || opener.getAttribute('aria-owns') || '').split(/\s+/).filter(Boolean);
-          const popups = popupIds.length ? popupIds.map(id => document.getElementById(id)).filter(Boolean) :
-            [...document.querySelectorAll('[role="listbox"],[role="menu"]')];
-          const options = [...new Set(popups.filter(visible).flatMap(popup =>
-            [...popup.querySelectorAll('[role="option"],[role="menuitem"],[role="menuitemradio"],li,button')]))]
-            .filter(option => visible(option) && !option.closest('[aria-disabled="true"],[disabled]') &&
-              normalized(option.textContent) === serviceName);
-          if (options.length !== 1) return 'missing-service';
-          options[0].click();
-          if (serviceText(opener) !== serviceName && options[0].getAttribute('aria-selected') !== 'true' &&
-              options[0].getAttribute('aria-checked') !== 'true') return 'missing-service';
+          const choices = [...document.querySelectorAll('#serviceShowHide [id^="bch_service_"]')]
+            .filter(row => visible(row) && row.getAttribute('aria-disabled') !== 'true' &&
+              normalized((row.querySelector('[id^="_service_"]') || row).textContent) === serviceName);
+          if (choices.length !== 1) return 'missing-service';
+          choices[0].click();
+          if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return 'missing-service';
         }
-        window.__campusCollapseServiceMenu?.(opener);
+        window.__campusCollapseServiceMenu?.(eportalOpener);
+      } else {
+        // Operator choices can also be horizontal native or accessible radios,
+        // including controls placed above and outside the credentials form.
+        const radios = [...document.querySelectorAll('input[type="radio"],[role="radio"]')];
+        const radioChoices = radios.filter(control => {
+          if (!(control instanceof HTMLInputElement) && control.querySelector('input[type="radio"]')) return false;
+          const form = control.form || control.closest('form');
+          if (form && form !== pass.form) return false;
+          if (control.matches(':disabled') || control.closest('[aria-disabled="true"]')) return false;
+          const labels = [...(control.labels || [])];
+          const wrapper = control.closest('label,[role="radio"]');
+          if (wrapper && !labels.includes(wrapper)) labels.push(wrapper);
+          for (const id of (control.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)) {
+            const label = document.getElementById(id);
+            if (label) labels.push(label);
+          }
+          if (!visible(control) && !labels.some(visible)) return false;
+          const names = [control.getAttribute('aria-label'), ...labels.map(label => label.textContent)];
+          if (control.getAttribute('role') === 'radio') names.push(control.textContent);
+          // Older pages use bare text or FONT/SPAN text after each input.
+          // Localization comments and indentation can sit between the two.
+          let sibling = control.nextSibling;
+          while (sibling && (sibling.nodeType === 8 ||
+              (sibling.nodeType === 3 && !normalized(sibling.textContent)))) sibling = sibling.nextSibling;
+          if (sibling?.nodeType === 3) names.push(sibling.textContent);
+          if (sibling?.nodeType === 1 && sibling.matches('font,span,label') &&
+              !sibling.querySelector('input,button,[role="radio"]')) names.push(sibling.textContent);
+          return names.some(name => normalized(name) === serviceName);
+        });
+        const choices = serviceSelects
+          .flatMap(select => [...select.options].filter(option => !option.disabled &&
+            !(option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled) &&
+            normalized(option.textContent) === serviceName).map(option => ({select, option})));
+        if (choices.length + radioChoices.length > 1) return 'missing-service';
+        if (radioChoices.length === 1) {
+          const radio = radioChoices[0];
+          const checked = () => radio instanceof HTMLInputElement ? radio.checked : radio.getAttribute('aria-checked') === 'true';
+          if (!checked()) {
+            const previous = window.__campusServiceRadioAttempt;
+            if (!previous || previous.control !== radio || previous.username !== cfg.username || previous.serviceName !== serviceName) {
+              window.__campusServiceRadioAttempt = {control:radio, username:cfg.username, serviceName};
+              // Click through the school's handler; setting checked alone skips
+              // account-domain updates and other operator-specific page logic.
+              radio.click();
+            }
+          }
+          if (!radio.isConnected || !checked() || radio.matches(':disabled') ||
+              radio.closest('[aria-disabled="true"]')) return 'missing-service';
+        } else if (choices.length === 1) {
+          const {select, option} = choices[0];
+          if (select.selectedIndex !== option.index) {
+            select.selectedIndex = option.index;
+            select.dispatchEvent(new Event('input', {bubbles:true}));
+            select.dispatchEvent(new Event('change', {bubbles:true}));
+          }
+          if (select.selectedOptions[0] !== option || select.disabled) return 'missing-service';
+          select.blur();
+        } else {
+          // Custom portals may create their choices only after opening the menu.
+          // Match the configured visible name, without a fixed carrier/value list.
+          if (serviceOpeners.length !== 1) return 'missing-service';
+          const opener = serviceOpeners[0];
+          if (serviceText(opener) !== serviceName) {
+            const opened = window.__campusCustomServiceMenus ||= new WeakMap();
+            const previous = opened.get(opener);
+            if ((!previous || previous.username !== cfg.username || previous.serviceName !== serviceName) &&
+                opener.getAttribute('aria-expanded') !== 'true') {
+              opened.set(opener, {username:cfg.username, serviceName});
+              opener.click();
+            }
+            const popupIds = (opener.getAttribute('aria-controls') || opener.getAttribute('aria-owns') || '').split(/\s+/).filter(Boolean);
+            const popups = popupIds.length ? popupIds.map(id => document.getElementById(id)).filter(Boolean) :
+              [...document.querySelectorAll('[role="listbox"],[role="menu"]')];
+            const options = [...new Set(popups.filter(visible).flatMap(popup =>
+              [...popup.querySelectorAll('[role="option"],[role="menuitem"],[role="menuitemradio"],li,button')]))]
+              .filter(option => visible(option) && !option.closest('[aria-disabled="true"],[disabled]') &&
+                normalized(option.textContent) === serviceName);
+            if (options.length !== 1) return 'missing-service';
+            options[0].click();
+            if (serviceText(opener) !== serviceName && options[0].getAttribute('aria-selected') !== 'true' &&
+                options[0].getAttribute('aria-checked') !== 'true') return 'missing-service';
+          }
+          window.__campusCollapseServiceMenu?.(opener);
+        }
       }
     }
-  }
+    return null;
+  })();
   /*CAMPUS_AGREEMENTS*/
+  if (serviceStatus) return serviceStatus;
   // School handlers can reject/reset a value; never report success or submit it.
   if (!editable(user) || !editable(pass) || !visible(user) || !visible(pass) ||
       user.value !== cfg.username || pass.value !== cfg.password) return 'missing-fields';

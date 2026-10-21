@@ -5,7 +5,7 @@ namespace CampusConnect;
 
 public sealed record CampusProfile
 {
-    public string Ssid { get; init; } = "HNPI-STU";
+    public string Ssid { get; init; } = "";
     public string? ConnectionMode { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsWired => ConnectionMode == "wired" || (ConnectionMode is null && string.IsNullOrWhiteSpace(Ssid));
@@ -25,7 +25,7 @@ public sealed record CampusProfile
     };
     public bool UseSavedWifiProfile { get; init; }
     public bool PortalEnabled { get; init; } = true;
-    public string PortalUrl { get; init; } = "http://192.168.0.123";
+    public string PortalUrl { get; init; } = "";
     public string Username { get; init; } = "";
     public string ServiceOption { get; init; } = "";
     public bool AutoSubmit { get; init; } = true;

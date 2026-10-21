@@ -96,7 +96,7 @@ internal sealed partial class MainForm : Form
         Shown += async (_, _) => {
             if (startInTray) Hide();
             // Overlap disk/DPAPI work with the WebView2 runtime startup.
-            configurationLoad = verificationPath is null ? Task.Run(LocalStore.Load) : Task.FromResult((new CampusProfile(), ""));
+            configurationLoad = verificationPath is null ? Task.Run(LocalStore.Load) : Task.FromResult((ConnectionConfiguration.Empty(false), ""));
             try { await InitializeShellAsync(); }
             catch (WebView2RuntimeNotFoundException) {
                 MessageBox.Show(this, "缺少 Microsoft Edge WebView2 组件。请联网后重新运行安装程序，完成组件安装再打开应用。", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
