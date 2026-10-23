@@ -4,7 +4,8 @@
 
 - 同步根目录、Windows 与 macOS 下载入口及更新说明，移除 macOS 界面的本地测试标识；正式版继续采用非商业使用许可证。
 - 首轮 CI 发现旧 SDK 的异步 JavaScript 接口会在测试语句返回 undefined 时强制解包崩溃；测试工具改用可接收空值的回调接口，并补充 null / undefined 检查。本地 117 项原生 WKWebView 检查通过，应用认证代码不受该测试工具修复影响。
-- 正式安装包取自本次提交对应的 GitHub Actions：macOS 通用构建、Windows x64 / ARM64 原生向导测试、安装/修复/升级/卸载及浏览器回归。具体运行结果以该标签关联的 Actions 记录为准。
+- 按用户要求，正式版仅维护并提供 Windows x64 与 macOS 两个平台，停止 Windows ARM64 自动构建与发布。
+- 正式安装包取自本次提交对应的 GitHub Actions：macOS 通用构建、Windows x64 原生向导测试、安装/修复/升级/卸载及浏览器回归。具体运行结果以该标签关联的 Actions 记录为准。
 - 发布时对源码白名单包、平台安装包和 SHA256SUMS.txt 进行上传后下载核对。发布验证记录保存在本地 output/2.1.8，真实校园网认证不由 CI 代替。
 
 ## 2026-10-23 2.1.8 本地认证核对向导

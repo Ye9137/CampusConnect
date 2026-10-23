@@ -9,7 +9,7 @@
 - 服务选项填写后在网页中未匹配时，区分未识别到选择控件、没有匹配的完整名称、网页未确认选中三类原因，并显示填写的服务名称。
 - 弹窗提供“上一步 / 下一步”分步向导；“打开对应设置”进入设置页并滚动、聚焦到对应输入框，保留原填写供手动核对。
 - 网页暂未加载出的服务选项保留有界等待；同次认证只提示一次，修正并保存后重新认证。
-- 提供 x64 与 ARM64 安装包。网页没有需要选择的选项时保持服务项空白，真实校园网认证仍需现场验证。
+- 提供 Windows x64 安装包。网页没有需要选择的选项时保持服务项空白，真实校园网认证仍需现场验证。
 
 ## 2.1.7
 
@@ -314,11 +314,9 @@ Windows 如果拒绝读取 Wi-Fi，在「设置 → 隐私和安全性 → 位�
 ```powershell
 dotnet run --project Windows/tests -c Release
 powershell -ExecutionPolicy Bypass -File Windows/build.ps1 -Runtime win-x64
-# ARM64 电脑可构建：
-powershell -ExecutionPolicy Bypass -File Windows/build.ps1 -Runtime win-arm64
 ```
 
-输出位于 `Windows/dist/win-x64/` 或 `Windows/dist/win-arm64/`，各目录仅包含一个 `CampusConnect.exe`。
+输出位于 `Windows/dist/win-x64/`，包含 `CampusConnect.exe`、原生运行库及模型文件。
 
 生成安装程序还需要 [NSIS](https://nsis.sourceforge.io/Download) 和 Python 3。在 PowerShell 执行：
 
@@ -326,7 +324,7 @@ powershell -ExecutionPolicy Bypass -File Windows/build.ps1 -Runtime win-arm64
 powershell -ExecutionPolicy Bypass -File Windows/build-installer.ps1 -Runtime win-x64
 ```
 
-构建时从 Microsoft 下载并验证 WebView2 引导程序签名，输出 `Windows/installer/dist/CampusConnect-Windows-x64-Setup.exe`。ARM64 同理传入 `-Runtime win-arm64`。
+构建时从 Microsoft 下载并验证 WebView2 引导程序签名，输出 `Windows/installer/dist/CampusConnect-Windows-x64-Setup.exe`。
 
 已发布程序的情况下，可通过 Python 调用原生 NSIS 编译器跨平台构建安装包：
 
