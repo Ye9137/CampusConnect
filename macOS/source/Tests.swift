@@ -9,6 +9,16 @@ import JavaScriptCore
     }
     static func main() throws {
         var noticeGate = PortalProblemGate()
+        for code in ["service-control-missing", "service-option-missing", "service-selection-failed"] {
+            var guideGate = PortalProblemGate()
+            let problem = guideGate.report(code, serviceOption: "中国移动\n")
+            expect(problem?.settingsField == "serviceOption" && problem?.steps.count == 4, "service failure has a four-step guide and targets operator input")
+            expect(problem?.summary.contains("中国移动") == true && problem?.summary.contains("中国移动\n") == false, "only sanitized service name is shown")
+            expect(PortalProblem.serviceCode(code) == code, "service reason is preserved")
+        }
+        expect(PortalProblem.serviceCode("untrusted-code") == "missing-service", "unknown browser diagnostic falls back to generic mismatch")
+        expect(PortalFillRetry.shouldRetry(result: "missing-service", scriptFailed: false, attempt: 79), "delayed service options retain bounded retries")
+        expect(!PortalFillRetry.shouldRetry(result: "missing-service", scriptFailed: false, attempt: 80), "missing service becomes visible guide after bounded waiting")
         for normal in ["authenticated", "filled", "submitted", "manual-required", "waiting-submit", "captcha-required"] {
             expect(noticeGate.report(normal) == nil, "normal and pending authentication never shows an error popup")
         }

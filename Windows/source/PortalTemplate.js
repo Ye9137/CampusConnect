@@ -102,7 +102,9 @@
   // A service mismatch pauses submission, but must not skip the independent
   // network pledge. Keep the school's service handlers before agreement checks.
   const serviceStatus = (() => {
-    const serviceName = (cfg.serviceOption || '').trim();
+    window.__campusServiceFailure = null;
+          const serviceMissing = reason => { window.__campusServiceFailure = reason; return 'missing-service'; };
+          const serviceName = (cfg.serviceOption || '').trim();
     // Some portals place the operator dropdown outside the credentials form.
     // Include unassociated controls, but never select a service in another form.
     const serviceSelects = [...document.querySelectorAll('select')]
@@ -142,9 +144,9 @@
           const choices = [...document.querySelectorAll('#serviceShowHide [id^="bch_service_"]')]
             .filter(row => visible(row) && row.getAttribute('aria-disabled') !== 'true' &&
               normalized((row.querySelector('[id^="_service_"]') || row).textContent) === serviceName);
-          if (choices.length !== 1) return 'missing-service';
+          if (choices.length !== 1) return serviceMissing(choices.length === 0 ? 'service-option-missing' : 'service-selection-failed');
           choices[0].click();
-          if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return 'missing-service';
+          if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return serviceMissing('service-selection-failed');
         }
         window.__campusCollapseServiceMenu?.(eportalOpener);
       } else {
@@ -180,7 +182,7 @@
           .flatMap(select => [...select.options].filter(option => !option.disabled &&
             !(option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled) &&
             normalized(option.textContent) === serviceName).map(option => ({select, option})));
-        if (choices.length + radioChoices.length > 1) return 'missing-service';
+        if (choices.length + radioChoices.length > 1) return serviceMissing('service-selection-failed');
         if (radioChoices.length === 1) {
           const radio = radioChoices[0];
           const checked = () => radio instanceof HTMLInputElement ? radio.checked : radio.getAttribute('aria-checked') === 'true';
@@ -194,7 +196,7 @@
             }
           }
           if (!radio.isConnected || !checked() || radio.matches(':disabled') ||
-              radio.closest('[aria-disabled="true"]')) return 'missing-service';
+              radio.closest('[aria-disabled="true"]')) return serviceMissing('service-selection-failed');
         } else if (choices.length === 1) {
           const {select, option} = choices[0];
           if (select.selectedIndex !== option.index) {
@@ -202,12 +204,17 @@
             select.dispatchEvent(new Event('input', {bubbles:true}));
             select.dispatchEvent(new Event('change', {bubbles:true}));
           }
-          if (select.selectedOptions[0] !== option || select.disabled) return 'missing-service';
+          if (select.selectedOptions[0] !== option || select.disabled) return serviceMissing('service-selection-failed');
           select.blur();
         } else {
           // Custom portals may create their choices only after opening the menu.
           // Match the configured visible name, without a fixed carrier/value list.
-          if (serviceOpeners.length !== 1) return 'missing-service';
+          if (serviceOpeners.length !== 1) {
+                  const visibleRadios = radios.some(control => (!control.form || control.form === pass.form) &&
+                    (visible(control) || [...(control.labels || [])].some(visible)));
+                  return serviceMissing(serviceOpeners.length > 1 ? 'service-selection-failed' :
+                    serviceSelects.length || visibleRadios ? 'service-option-missing' : 'service-control-missing');
+                }
           const opener = serviceOpeners[0];
           if (serviceText(opener) !== serviceName) {
             const opened = window.__campusCustomServiceMenus ||= new WeakMap();
@@ -224,10 +231,10 @@
               [...popup.querySelectorAll('[role="option"],[role="menuitem"],[role="menuitemradio"],li,button')]))]
               .filter(option => visible(option) && !option.closest('[aria-disabled="true"],[disabled]') &&
                 normalized(option.textContent) === serviceName);
-            if (options.length !== 1) return 'missing-service';
+            if (options.length !== 1) return serviceMissing(options.length === 0 ? 'service-option-missing' : 'service-selection-failed');
             options[0].click();
             if (serviceText(opener) !== serviceName && options[0].getAttribute('aria-selected') !== 'true' &&
-                options[0].getAttribute('aria-checked') !== 'true') return 'missing-service';
+                options[0].getAttribute('aria-checked') !== 'true') return serviceMissing('service-selection-failed');
           }
           window.__campusCollapseServiceMenu?.(opener);
         }

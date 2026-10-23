@@ -1,0 +1,42 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8');
+const cfg={origin:'http://portal.test',username:'fixture-user',password:'fixture-password',submit:true,serviceOption:'中国移动'};
+const script=options=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,...options}));
+const form='<form><input name="username"><input type="password"><button type="button" onclick="window.clicks++">登录</button></form><script>window.clicks=0</script>';
+(async()=>{
+ const browser=await chromium.launch(process.env.CAMPUS_CHROME_PATH?{executablePath:process.env.CAMPUS_CHROME_PATH,headless:true}:{headless:true});
+ try{
+  const page=await browser.newPage();
+  let body=form;
+  await page.route('http://portal.test/**',r=>r.fulfill({contentType:'text/html; charset=utf-8',body}));
+  await page.goto('http://portal.test/login');
+  assert.equal(await page.evaluate(script()),'missing-service');
+  assert.equal(await page.evaluate(()=>window.__campusServiceFailure),'service-control-missing');
+  assert.equal(await page.evaluate(()=>clicks),0);
+  await page.evaluate(()=>document.body.insertAdjacentHTML('beforeend','<select><option>选择运营商</option><option>中国联通</option></select>'));
+  assert.equal(await page.evaluate(script()),'missing-service');
+  assert.equal(await page.evaluate(()=>window.__campusServiceFailure),'service-option-missing');
+  await page.evaluate(()=>document.querySelector('select').insertAdjacentHTML('beforeend','<option>中国移动</option>'));
+  assert.equal(await page.evaluate(script()),'submitted');
+  assert.equal(await page.evaluate(()=>window.__campusServiceFailure),null);
+  assert.equal(await page.evaluate(()=>clicks),1);
+  await page.goto('http://portal.test/login');
+  assert.equal(await page.evaluate(script({serviceOption:''})),'submitted');
+  assert.equal(await page.evaluate(()=>window.__campusServiceFailure),null);
+  body=form+'<label><input type="radio" name="network" onclick="event.preventDefault()">中国移动</label>';
+  await page.goto('http://portal.test/login');
+  assert.equal(await page.evaluate(script()),'missing-service');
+  assert.equal(await page.evaluate(()=>window.__campusServiceFailure),'service-selection-failed');
+  assert.equal(await page.evaluate(()=>clicks),0);
+  await page.addInitScript(()=>{window.chrome={webview:{postMessage(){},addEventListener(){}}};});
+  await page.goto(require('node:url').pathToFileURL(path.join(__dirname,'../source/Desktop.html')).href);
+  await page.evaluate(()=>campus.receive({kind:'page',page:'settings'}));
+  await page.locator('#serviceOption').fill('保留待核对的服务');
+  await page.evaluate(()=>campus.receive({kind:'page',page:'portal'}));
+  await page.evaluate(()=>campus.receive({kind:'guide',field:'serviceOption'}));
+  await page.waitForFunction(()=>document.activeElement?.id==='serviceOption');
+  assert.equal(await page.locator('#serviceOption').inputValue(),'保留待核对的服务');
+  console.log('PASS: no service controls, unmatched option, rejected selection, delayed choices recover, empty optional setting and no duplicate submission.');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

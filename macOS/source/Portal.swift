@@ -38,7 +38,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
         requiresInteraction = true; filled = true; password = ""; authenticationDeadline = nil
         loading = false; preparing = false
         self.message = message
-        if let problem = problemGate.report(code) { onProblem?(problem) }
+        if let problem = problemGate.report(code, serviceOption: profile?.serviceOption) { onProblem?(problem) }
     }
 
     override init() {
@@ -225,7 +225,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                 guard let self, expected == self.generation else { return }
                 let status = result as? String
                 if PortalFillRetry.shouldRetry(result: status, scriptFailed: error != nil, attempt: attempt) {
-                    self.message = status == "waiting-agreement" ? "正在等待网页确认必选框和协议项…" : status == "waiting-submit" ? "账号密码已填写，正在等待学校页面处理登录…" : "正在等待认证页面就绪…"
+                    self.message = status == "missing-service" ? "正在核对填写的运营商 / 服务选项，等待网页加载完成…" : status == "waiting-agreement" ? "正在等待网页确认必选框和协议项…" : status == "waiting-submit" ? "账号密码已填写，正在等待学校页面处理登录…" : "正在等待认证页面就绪…"
                     DispatchQueue.main.asyncAfter(deadline: .now() + PortalFillRetry.delay) { [weak self] in
                         self?.attemptFill(generation: expected, attempt: attempt + 1)
                     }
@@ -247,7 +247,15 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                     self.onSubmission?(); self.observeAuthentication()
                 case "filled": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，请在页面点击登录。"
                 case "missing-submit": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("missing-submit", "账号密码已填写，未识别登录按钮，请在网页中手动点击登录。")
-                case "missing-service": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("missing-service", "未找到或未能选中填写的服务选项，请检查完整名称或在网页中手动选择。网页没有选项时，请清空设置中的服务选项。")
+                case "missing-service":
+                    self.requiresInteraction = true; self.filled = true; self.password = ""
+                    guard let diagnostic = try? PortalScript.serviceFailure(profile: profile) else {
+                        self.reportFailure("missing-service", "服务选项未匹配，请按弹窗向导处理。"); return
+                    }
+                    self.webView.evaluateJavaScript(diagnostic) { [weak self] value, _ in
+                        guard let self, expected == self.generation else { return }
+                        self.reportFailure(PortalProblem.serviceCode(value as? String), "填写的运营商 / 服务选项未能在认证页匹配，已暂停自动登录，请按弹窗向导处理。")
+                    }
                 case "service-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("service-required", "认证页尚未选择运营商或服务。请在设置的“运营商 / 服务选项”中填写网页上的完整名称（如中国移动），保存后重新认证；也可在网页中手动选择并登录。")
                 case "waiting-agreement", "agreement-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("agreement-required", "网页必选框或协议项无法自动确认，请在页面手动勾选后登录。")
                 case "manual-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "请在学校网页中手动输入验证码（支持英文字母和数字），核对后点击登录；如需运营商信息也请补充。"

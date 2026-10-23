@@ -26,6 +26,7 @@ enum Page: String, CaseIterable {
     @Published var page = Page.dashboard
     @Published var showingFeedback = false
     @Published var portalProblem: PortalProblem?
+    @Published var guidedSetting: String?
     @Published var currentSSID: String?
     @Published var wiredConnected = false
     @Published var wiredLink = false
@@ -69,7 +70,14 @@ enum Page: String, CaseIterable {
         super.init()
         portal.onProblem = { [weak self] problem in
             self?.portalProblem = problem
-            if problem != nil { self?.selectPage(.portal) }
+            if problem != nil {
+                self?.selectPage(.portal)
+                DispatchQueue.main.async { [weak self] in
+                    guard self?.portalProblem != nil else { return }
+                    NSApplication.shared.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+            }
         }
         if preview { return }
         refreshWiredOptions()
@@ -478,6 +486,7 @@ enum Page: String, CaseIterable {
 
 struct RootView: View {
     @ObservedObject var model: AppModel
+    @FocusState private var focusedSetting: String?
     private let accent = Color(red: 0.04, green: 0.48, blue: 0.52)
     var body: some View {
         HStack(spacing: 0) {
@@ -576,15 +585,16 @@ struct RootView: View {
                         Text(model.status).font(.system(size: 11)).lineLimit(2)
                     }
                     Spacer()
-                    Text("v2.1.7 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("v2.1.8 · 本地测试 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 24).padding(.vertical, 12)
             }.background(Color(nsColor: .textBackgroundColor))
         }.frame(minWidth: 980, minHeight: 700).tint(accent).textSelection(.disabled)
-            .alert(item: $model.portalProblem) { problem in
-                Alert(title: Text(problem.title),
-                      message: Text(problem.summary + "\n\n修改建议：\n" + problem.advice),
-                      primaryButton: .default(Text("修改设置")) { model.selectPage(.settings) },
-                      secondaryButton: .cancel(Text("知道了")))
+            .sheet(item: $model.portalProblem) { problem in
+                PortalProblemGuide(problem: problem, openSettings: {
+                    model.portalProblem = nil
+                    model.selectPage(.settings)
+                    model.guidedSetting = problem.settingsField
+                }, dismiss: { model.portalProblem = nil })
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshStartup() }
     }
@@ -676,13 +686,15 @@ struct RootView: View {
             }.padding(26)
         }
     }
-    func field(_ title: String, text: Binding<String>, prompt: String = "") -> some View {
+    func field(_ title: String, text: Binding<String>, prompt: String = "", id: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title).font(.system(size: 12, weight: .medium))
             TextField(prompt, text: text).textFieldStyle(.roundedBorder)
-        }
+                .focused($focusedSetting, equals: id ?? title)
+        }.id(id ?? title)
     }
     var settings: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 card {
@@ -753,15 +765,15 @@ struct RootView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Toggle("连接后进行上网认证", isOn: $model.draft.portalEnabled).font(.system(size: 15, weight: .semibold))
                         if model.draft.portalEnabled {
-                            field("认证页面地址", text: $model.draft.portalURL, prompt: "输入学校认证页面地址")
+                            field("认证页面地址", text: $model.draft.portalURL, prompt: "输入学校认证页面地址", id: "portalUrl")
                             HStack(alignment: .top, spacing: 16) {
-                                field("学号 / 上网账号", text: $model.draft.username, prompt: "输入账号")
+                                field("学号 / 上网账号", text: $model.draft.username, prompt: "输入账号", id: "username")
                                 VStack(alignment: .leading, spacing: 7) {
                                     Text("上网密码").font(.system(size: 12, weight: .medium))
                                     SecureField("输入上网密码", text: $model.portalPassword).textFieldStyle(.roundedBorder)
                                 }
                             }
-                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "网页没有需要选择的选项时请勿填写")
+                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "网页没有需要选择的选项时请勿填写", id: "serviceOption")
                             Text("如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。需要选择时，填写网页显示的完整选项名称，保存后重新认证。")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                             Toggle("自动填写后点击登录", isOn: $model.draft.autoSubmit)
@@ -779,8 +791,52 @@ struct RootView: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }.padding(26).disabled(model.joining)
         }
+        .onChange(of: model.guidedSetting) { _, field in
+            guard let field else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                guard model.page == .settings, model.guidedSetting == field else { return }
+                proxy.scrollTo(field, anchor: .center)
+                focusedSetting = field
+                model.guidedSetting = nil
+            }
+        }
+        }
     }
 
+}
+
+private final class PortalGuideState: ObservableObject {
+    @Published var step = 0
+}
+
+struct PortalProblemGuide: View {
+    let problem: PortalProblem
+    let openSettings: () -> Void
+    let dismiss: () -> Void
+    @StateObject private var state = PortalGuideState()
+    private var step: Int { state.step }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(problem.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+            Text("原因：" + problem.summary).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("处理向导 · 第 \(step + 1) / \(problem.steps.count) 步").font(.system(size: 12, weight: .semibold))
+                Text(problem.steps[step]).font(.system(size: 13)).lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading).padding(16)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.1)))
+            HStack {
+                Button("上一步") { state.step = max(0, step - 1) }.disabled(step == 0)
+                Button(step == problem.steps.count - 1 ? "打开设置" : "下一步") {
+                    if step < problem.steps.count - 1 { state.step += 1 } else { openSettings() }
+                }.keyboardShortcut(.defaultAction)
+                Spacer()
+                Button("打开对应设置", action: openSettings)
+                Button("稍后处理", action: dismiss).keyboardShortcut(.cancelAction)
+            }
+        }.padding(24).frame(width: 600).textSelection(.enabled)
+    }
 }
 
 struct PortalPage: View {

@@ -6,10 +6,29 @@ struct PortalProblem: Identifiable, Equatable {
     let summary: String
     let advice: String
     var id: String { code }
+    var settingsField: String? {
+        if ["missing-service", "service-control-missing", "service-option-missing", "service-selection-failed", "service-required"].contains(code) { return "serviceOption" }
+        if ["missing-fields", "missing-credentials"].contains(code) { return "username" }
+        return ["load-failed", "wrong-origin", "waiting-ready"].contains(code) ? "portalUrl" : nil
+    }
+    var steps: [String] {
+        settingsField == "serviceOption" ? [
+            "查看学校认证网页，确认是否有运营商 / 服务选择框。页面尚未加载完成时，先等待加载。",
+            code == "service-control-missing" ? "如果网页没有需要选择的选项，请打开校园网设置，清空“运营商 / 服务选项”，保持空白。未识别到控件也可能是页面结构暂不支持，请先人工确认。" : "如果网页有选项，展开后核对完整名称。请填写网页显示的完整选项名称，不要填写简称、猜测名称或网页上不存在的内容；网页没有此选项时保持空白。",
+            "点击“打开对应设置”定位到运营商输入框，按网页实际情况清空或修改。这里不会自动删除你的填写内容。",
+            "点击“保存设置”，再返回“上网认证”点击“立即认证”。若仍无法匹配，可先在学校网页手动选择并登录，再通过左下角入口反馈。"
+        ] : [advice, "打开对应设置，核对认证地址以及账号输入位置。未识别到输入框不代表账号或密码错误；若网页是二维码模式，请先切换到账号密码登录。", "保存修改后返回上网认证，点击“立即认证”重试；也可在学校网页中手动登录。"]
+    }
+    static func serviceCode(_ reason: String?) -> String {
+        ["service-control-missing", "service-option-missing", "service-selection-failed"].contains(reason ?? "") ? reason! : "missing-service"
+    }
 
     static func from(_ code: String) -> PortalProblem? {
         let content: (String, String, String)
         switch code {
+        case "service-control-missing": content = ("网页未找到运营商 / 服务选项", "设置中填写了运营商 / 服务选项，但当前认证网页未识别到对应的选择控件，已暂停自动登录。", "网页没有需要选择的选项时，请清空设置中的运营商 / 服务选项；网页确有选项时，先等待加载或手动选择。")
+        case "service-option-missing": content = ("网页未匹配到填写的服务名称", "当前网页的可识别选项中，未找到与你填写内容完全一致且可选择的服务名称，已暂停自动登录。", "核对网页上的完整名称以及选项是否可用；请勿填写简称或不存在的名称。网页没有运营商选项时保持空白。")
+        case "service-selection-failed": content = ("网页未确认服务选中", "找到相关服务项，但无法唯一确定选项，或学校网页没有确认选中，已暂停自动登录。", "请在学校网页中手动选择并确认服务项，再检查保存的完整名称；不要反复自动提交。")
         case "load-failed": content = ("认证页面无法打开", "认证页面加载失败，已暂停自动重试。", "先确认已连接校园 Wi-Fi 或网线，再核对认证地址。可在系统浏览器中打开学校登录页；地址变化时，在确认属于学校后更新认证地址。")
         case "wrong-origin": content = ("请核对认证地址", "当前页面与允许的认证地址不匹配，已停止自动填写。", "确认当前页面属于学校后，使用“使用当前页面地址”更新认证地址，再保存并重新认证。不要将外站地址保存为认证入口。")
         case "missing-service": content = ("请修改运营商 / 服务选项", "未找到或未能选中设置中填写的服务选项，无法自动填写信息。", "如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。请清空设置中的“运营商 / 服务选项”；有选项时填写网页显示的完整名称，保存后重新认证。")
@@ -30,8 +49,12 @@ struct PortalProblem: Identifiable, Equatable {
 
 struct PortalProblemGate {
     private(set) var current: PortalProblem?
-    mutating func report(_ code: String) -> PortalProblem? {
-        guard current == nil, let problem = PortalProblem.from(code) else { return nil }
+    mutating func report(_ code: String, serviceOption: String? = nil) -> PortalProblem? {
+        guard current == nil, var problem = PortalProblem.from(code) else { return nil }
+        if problem.settingsField == "serviceOption", let value = serviceOption, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let safe = String(value.components(separatedBy: .controlCharacters).joined().prefix(80))
+            problem = PortalProblem(code: problem.code, title: problem.title, summary: problem.summary + "\n填写的服务选项：" + safe, advice: problem.advice)
+        }
         current = problem
         return problem
     }
@@ -265,11 +288,15 @@ enum PortalFillRetry {
     static let maxAttempts = 200
     static let delay: TimeInterval = 0.15
     static func shouldRetry(result: String?, scriptFailed: Bool, attempt: Int) -> Bool {
-        attempt < maxAttempts && (scriptFailed || ["waiting-ready", "waiting-submit", "waiting-agreement", "missing-fields", "missing-submit", "missing-service"].contains(result ?? ""))
+        if !scriptFailed && result == "missing-service" { return attempt < 80 }
+        return attempt < maxAttempts && (scriptFailed || ["waiting-ready", "waiting-submit", "waiting-agreement", "missing-fields", "missing-submit", "missing-service"].contains(result ?? ""))
     }
 }
 
 enum PortalScript {
+    static func serviceFailure(profile: CampusProfile) throws -> String {
+        try inContext("window.__campusServiceFailure || 'missing-service'", profile: profile)
+    }
     static func origin(_ url: URL) -> String? {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), let host = url.host?.lowercased() else { return nil }
         let port = url.port
@@ -424,6 +451,8 @@ enum PortalScript {
               input.dispatchEvent(new Event('change', {bubbles:true}));
             }
           }
+          window.__campusServiceFailure = null;
+          const serviceMissing = reason => { window.__campusServiceFailure = reason; return 'missing-service'; };
           const serviceName = (cfg.serviceOption || '').trim();
           // Some portals place the operator dropdown outside the credentials form.
           // Include unassociated controls, but never select a service in another form.
@@ -461,9 +490,9 @@ enum PortalScript {
                 const choices = [...document.querySelectorAll('#serviceShowHide [id^="bch_service_"]')]
                   .filter(row => visible(row) && row.getAttribute('aria-disabled') !== 'true' &&
                     normalized((row.querySelector('[id^="_service_"]') || row).textContent) === serviceName);
-                if (choices.length !== 1) return 'missing-service';
+                if (choices.length !== 1) return serviceMissing(choices.length === 0 ? 'service-option-missing' : 'service-selection-failed');
                 choices[0].click();
-                if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return 'missing-service';
+                if (normalized(serviceLabel.textContent) !== serviceName || !serviceValue.value) return serviceMissing('service-selection-failed');
               }
             } else {
               // Operator choices can also be horizontal native or accessible radios,
@@ -498,7 +527,7 @@ enum PortalScript {
                 .flatMap(select => [...select.options].filter(option => !option.disabled &&
                   !(option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled) &&
                   normalized(option.textContent) === serviceName).map(option => ({select, option})));
-              if (choices.length + radioChoices.length > 1) return 'missing-service';
+              if (choices.length + radioChoices.length > 1) return serviceMissing('service-selection-failed');
               if (radioChoices.length === 1) {
                 const radio = radioChoices[0];
                 const checked = () => radio instanceof HTMLInputElement ? radio.checked : radio.getAttribute('aria-checked') === 'true';
@@ -512,7 +541,7 @@ enum PortalScript {
                   }
                 }
                 if (!radio.isConnected || !checked() || radio.matches(':disabled') ||
-                    radio.closest('[aria-disabled="true"]')) return 'missing-service';
+                    radio.closest('[aria-disabled="true"]')) return serviceMissing('service-selection-failed');
               } else if (choices.length === 1) {
                 const {select, option} = choices[0];
                 if (select.selectedIndex !== option.index) {
@@ -520,11 +549,16 @@ enum PortalScript {
                   select.dispatchEvent(new Event('input', {bubbles:true}));
                   select.dispatchEvent(new Event('change', {bubbles:true}));
                 }
-                if (select.selectedOptions[0] !== option || select.disabled) return 'missing-service';
+                if (select.selectedOptions[0] !== option || select.disabled) return serviceMissing('service-selection-failed');
               } else {
                 // Custom portals may create their choices only after opening the menu.
                 // Match the configured visible name, without a fixed carrier/value list.
-                if (serviceOpeners.length !== 1) return 'missing-service';
+                if (serviceOpeners.length !== 1) {
+                  const visibleRadios = radios.some(control => (!control.form || control.form === pass.form) &&
+                    (visible(control) || [...(control.labels || [])].some(visible)));
+                  return serviceMissing(serviceOpeners.length > 1 ? 'service-selection-failed' :
+                    serviceSelects.length || visibleRadios ? 'service-option-missing' : 'service-control-missing');
+                }
                 const opener = serviceOpeners[0];
                 if (serviceText(opener) !== serviceName) {
                   const opened = window.__campusCustomServiceMenus ||= new WeakMap();
@@ -541,10 +575,10 @@ enum PortalScript {
                     [...popup.querySelectorAll('[role="option"],[role="menuitem"],[role="menuitemradio"],li,button')]))]
                     .filter(option => visible(option) && !option.closest('[aria-disabled="true"],[disabled]') &&
                       normalized(option.textContent) === serviceName);
-                  if (options.length !== 1) return 'missing-service';
+                  if (options.length !== 1) return serviceMissing(options.length === 0 ? 'service-option-missing' : 'service-selection-failed');
                   options[0].click();
                   if (serviceText(opener) !== serviceName && options[0].getAttribute('aria-selected') !== 'true' &&
-                      options[0].getAttribute('aria-checked') !== 'true') return 'missing-service';
+                      options[0].getAttribute('aria-checked') !== 'true') return serviceMissing('service-selection-failed');
                 }
               }
             }

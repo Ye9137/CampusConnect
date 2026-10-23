@@ -84,10 +84,11 @@ internal sealed partial class MainForm : Form
             if (IsDisposed || !ReferenceEquals(portal.CurrentProblem, problem)) return;
             RestoreWindow();
             Navigate("portal");
-            var result = MessageBox.Show(this, problem.Summary + "\n\n修改建议：\n" + problem.Advice +
-                "\n\n是否打开校园网设置进行修改？", "校园Wi-Fi小助手 · " + problem.Title,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-            if (result == DialogResult.Yes) Navigate("settings");
+            using var guide = new PortalProblemDialog(problem);
+            if (guide.ShowDialog(this) == DialogResult.OK) {
+                Navigate("settings");
+                Post(new { kind = "guide", field = problem.SettingsField });
+            }
         }));
         portal.CaptchaRequired += () => { Navigate("portal"); };
         portal.Submitted += async () => {

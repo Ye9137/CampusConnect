@@ -76,6 +76,23 @@ import WebKit
         return result
     }
     func run() async throws {
+        let serviceForm = "<form><input name='username'><input type='password'><button type='button' onclick='window.clicks++'>登录</button></form><script>window.clicks=0</script>"
+        try await load(html: serviceForm)
+        try expect(try await fill(service: "中国移动") == "missing-service", "configured service without controls waits for correction")
+        try expect(try await js("window.__campusServiceFailure") as? String == "service-control-missing", "native diagnostic identifies absent service controls")
+        try expect(try await js("clicks") as? Int == 0, "absent service never submits")
+        try await js("document.body.insertAdjacentHTML('beforeend', '<select><option>选择运营商</option><option>中国联通</option></select>')")
+        try expect(try await fill(service: "中国移动") == "missing-service", "unmatched service pauses login")
+        try expect(try await js("window.__campusServiceFailure") as? String == "service-option-missing", "native diagnostic identifies unmatched full name")
+        try await js("document.querySelector('select').insertAdjacentHTML('beforeend', '<option>中国移动</option>')")
+        try expect(try await pump(service: "中国移动") == "submitted", "late matching option recovers without dismissing a required service")
+        try expect(try await js("window.__campusServiceFailure == null") as? Bool == true, "stale reason clears after a matching selection")
+        try expect(try await js("clicks") as? Int == 1, "late matching option submits once")
+        try await load(html: serviceForm)
+        try expect(try await pump() == "submitted", "blank optional service works without controls")
+        try await load(html: serviceForm + "<label><input type='radio' name='network' onclick='event.preventDefault()'>中国移动</label>")
+        try expect(try await fill(service: "中国移动") == "missing-service", "school can reject a radio selection")
+        try expect(try await js("window.__campusServiceFailure") as? String == "service-selection-failed", "native diagnostic identifies unconfirmed selection")
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         if let entry = ProcessInfo.processInfo.environment["CAMPUS_FRAME_TEST_URL"], let url = URL(string: entry) {
             view.navigationDelegate = self

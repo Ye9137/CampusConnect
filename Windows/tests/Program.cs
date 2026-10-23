@@ -11,6 +11,14 @@ void Invalid(CampusProfile profile) {
 }
 PortalRedirectTests.Run(Expect);
 var noticeGate = new PortalProblemGate();
+foreach (var code in new[] { "service-control-missing", "service-option-missing", "service-selection-failed" }) {
+    var guideGate = new PortalProblemGate();
+    var problem = guideGate.Report(code, "中国移动\n");
+    Expect(problem?.SettingsField == "serviceOption" && problem.Steps.Count == 4, "service failure offers four steps and targets operator input");
+    Expect(problem!.Summary.Contains("中国移动") && !problem.Summary.Contains("中国移动\n"), "guide shows sanitized service name without raw control characters");
+    Expect(PortalProblem.ServiceCode(code) == code, "service reason is preserved");
+}
+Expect(PortalProblem.ServiceCode("untrusted-code") == "missing-service", "unknown browser diagnostic falls back to generic service mismatch");
 foreach (var normal in new[] { "authenticated", "filled", "submitted", "manual-required", "waiting-submit", "captcha-required" })
     Expect(noticeGate.Report(normal) is null, "normal and pending authentication never shows an error popup");
 var serviceProblem = noticeGate.Report("missing-service");

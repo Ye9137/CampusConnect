@@ -5,7 +5,19 @@ namespace CampusConnect;
 
 internal sealed record PortalProblem(string Code, string Title, string Summary, string Advice)
 {
+    public string? SettingsField => Code is "missing-service" or "service-control-missing" or "service-option-missing" or "service-selection-failed" or "service-required" ? "serviceOption" :
+        Code is "missing-fields" or "missing-credentials" ? "username" : Code is "load-failed" or "wrong-origin" or "waiting-ready" ? "portalUrl" : null;
+    public IReadOnlyList<string> Steps => SettingsField == "serviceOption" ? [
+        "查看学校认证网页，确认是否有运营商 / 服务选择框。页面尚未加载完成时，先等待加载。",
+        Code == "service-control-missing" ? "如果网页没有需要选择的选项，请打开校园网设置，清空“运营商 / 服务选项”，保持空白。未识别到控件也可能是页面结构暂不支持，请先人工确认。" : "如果网页有选项，展开后核对完整名称。请填写网页显示的完整选项名称，不要填写简称、猜测名称或网页上不存在的内容；网页没有此选项时保持空白。",
+        "点击“打开对应设置”定位到运营商输入框，按网页实际情况清空或修改。这里不会自动删除你的填写内容。",
+        "点击“保存设置”，再返回“上网认证”点击“立即认证”。若仍无法匹配，可先在学校网页手动选择并登录，再通过左下角入口反馈。"
+    ] : [Advice, "打开对应设置，核对认证地址以及账号输入位置。未识别到输入框不代表账号或密码错误；若网页是二维码模式，请先切换到账号密码登录。", "保存修改后返回上网认证，点击“立即认证”重试；也可在学校网页中手动登录。"];
+    public static string ServiceCode(string? reason) => reason is "service-control-missing" or "service-option-missing" or "service-selection-failed" ? reason : "missing-service";
     public static PortalProblem? From(string code) => code switch {
+        "service-control-missing" => new(code, "网页未找到运营商 / 服务选项", "设置中填写了运营商 / 服务选项，但当前认证网页未识别到对应的选择控件，已暂停自动登录。", "网页没有需要选择的选项时，请清空设置中的运营商 / 服务选项；网页确有选项时，先等待加载或手动选择。"),
+        "service-option-missing" => new(code, "网页未匹配到填写的服务名称", "当前网页的可识别选项中，未找到与你填写内容完全一致且可选择的服务名称，已暂停自动登录。", "核对网页上的完整名称以及选项是否可用；请勿填写简称或不存在的名称。网页没有运营商选项时保持空白。"),
+        "service-selection-failed" => new(code, "网页未确认服务选中", "找到相关服务项，但无法唯一确定选项，或学校网页没有确认选中，已暂停自动登录。", "请在学校网页中手动选择并确认服务项，再检查保存的完整名称；不要反复自动提交。"),
         "load-failed" => new(code, "认证页面无法打开", "认证页面加载失败，已暂停自动重试。", "先确认已连接校园 Wi-Fi 或网线，再核对认证地址。可在系统浏览器中打开学校登录页；地址变化时，在确认属于学校后更新认证地址。"),
         "wrong-origin" => new(code, "请核对认证地址", "当前页面与允许的认证地址不匹配，已停止自动填写。", "确认当前页面属于学校后，使用“使用当前页面地址”更新认证地址，再保存并重新认证。不要将外站地址保存为认证入口。"),
         "missing-service" => new(code, "请修改运营商 / 服务选项", "未找到或未能选中设置中填写的服务选项，无法自动填写信息。", "如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。请清空设置中的“运营商 / 服务选项”；有选项时填写网页显示的完整名称，保存后重新认证。"),
@@ -25,10 +37,15 @@ internal sealed record PortalProblem(string Code, string Title, string Summary, 
 internal sealed class PortalProblemGate
 {
     public PortalProblem? Current { get; private set; }
-    public PortalProblem? Report(string code)
+    public PortalProblem? Report(string code, string? serviceOption = null)
     {
         if (Current is not null) return null;
-        return Current = PortalProblem.From(code);
+        var problem = PortalProblem.From(code);
+        if (problem?.SettingsField == "serviceOption" && !string.IsNullOrWhiteSpace(serviceOption)) {
+            var safe = string.Concat(serviceOption.Where(c => !char.IsControl(c))).Trim();
+            problem = problem with { Summary = problem.Summary + "\n填写的服务选项：" + safe[..Math.Min(safe.Length, 80)] };
+        }
+        return Current = problem;
     }
     public void Reset() => Current = null;
 }
@@ -166,6 +183,7 @@ public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset starte
 
 public static class PortalScript
 {
+    public static string ServiceFailure(CampusProfile profile) => InContext(profile, "window.__campusServiceFailure || 'missing-service'", "'missing-service'");
     public static string InContext(CampusProfile profile, string script, string fallback = "'missing-fields'")
     {
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalContext.js")

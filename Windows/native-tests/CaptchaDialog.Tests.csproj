@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../source/Core.cs" Link="Core.cs" />
+    <Compile Include="../source/PortalProblemDialog.cs" Link="PortalProblemDialog.cs" />
     <Compile Include="../source/ConnectionProfiles.cs" Link="ConnectionProfiles.cs" />
     <Compile Include="../source/LocalStore.cs" Link="LocalStore.cs" />
     <Compile Include="../source/CaptchaSupport.cs" Link="CaptchaSupport.cs" />

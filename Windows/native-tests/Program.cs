@@ -37,6 +37,29 @@ internal static class Program
         } finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         using var owner = new Form();
         owner.Show();
+        using (var guide = new PortalProblemDialog(PortalProblem.From("service-control-missing")!)) {
+            IEnumerable<Control> Descendants(Control root) => root.Controls.Cast<Control>().SelectMany(child => new[] { child }.Concat(Descendants(child)));
+            Exception? failure = null;
+            using var guideTimer = new System.Windows.Forms.Timer { Interval = 100 };
+            guideTimer.Tick += (_, _) => {
+                guideTimer.Stop();
+                try {
+                    var controls = Descendants(guide).ToArray();
+                    var previous = controls.OfType<Button>().Single(b => b.Text == "上一步");
+                    var next = controls.OfType<Button>().Single(b => b.Text == "下一步");
+                    Expect(!previous.Enabled, "native guide begins at first step");
+                    next.PerformClick();
+                    Expect(previous.Enabled && controls.OfType<Label>().Any(l => l.Text.Contains("第 2 / 4 步")), "native guide moves forward");
+                    previous.PerformClick();
+                    Expect(!previous.Enabled && controls.OfType<Label>().Any(l => l.Text.Contains("第 1 / 4 步")), "native guide moves backward without losing reason");
+                    controls.OfType<Button>().Single(b => b.Text == "打开对应设置").PerformClick();
+                } catch (Exception ex) { failure = ex; guide.Close(); }
+            };
+            guideTimer.Start();
+            var result = guide.ShowDialog(owner);
+            if (failure is not null) throw failure;
+            Expect(result == DialogResult.OK, "native guide returns explicit settings action");
+        }
         using var bitmap = new Bitmap(120, 40);
         using var buffer = new MemoryStream();
         bitmap.Save(buffer, System.Drawing.Imaging.ImageFormat.Png);
