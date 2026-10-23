@@ -58,7 +58,14 @@ import WebKit
         self.navigation?.resume(throwing: error); self.navigation = nil
     }
     @discardableResult func js(_ script: String) async throws -> Any {
-        try await view.evaluateJavaScript(script) ?? NSNull()
+        // Older SDK async overlays force-unwrap JavaScript undefined results.
+        // The callback API preserves nil so statements remain safe to evaluate.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+            view.evaluateJavaScript(script) { value, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: value ?? NSNull()) }
+            }
+        }
     }
     func fill(submit: Bool = true, origin: String = "http://portal.test", service: String = "") async throws -> String {
         var profile = CampusProfile()
@@ -78,6 +85,8 @@ import WebKit
     func run() async throws {
         let serviceForm = "<form><input name='username'><input type='password'><button type='button' onclick='window.clicks++'>登录</button></form><script>window.clicks=0</script>"
         try await load(html: serviceForm)
+        try expect(try await js("void 0") is NSNull, "undefined JavaScript statements bridge safely")
+        try expect(try await js("null") is NSNull, "null JavaScript results bridge safely")
         try expect(try await fill(service: "中国移动") == "missing-service", "configured service without controls waits for correction")
         try expect(try await js("window.__campusServiceFailure") as? String == "service-control-missing", "native diagnostic identifies absent service controls")
         try expect(try await js("clicks") as? Int == 0, "absent service never submits")
