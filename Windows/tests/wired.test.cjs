@@ -35,7 +35,7 @@ const { pathToFileURL } = require('node:url');
     await page.waitForFunction(()=>document.getAnimations().length===0);
     assert.equal(await page.locator('#permission-card').isVisible(),false);
     assert.match(await page.locator('#networks').textContent(),/以太网/);
-    assert.equal(await page.locator('.brand-name').textContent(),'校园网络');
+    assert.equal(await page.locator('.brand-name').textContent(),'校园Wi-Fi小助手');
     assert.equal(await page.locator('#connection-icon').getAttribute('data-icon'),'network');
     assert.equal(await page.locator('#dashboard-icon').getAttribute('data-icon'),'network');
     assert.equal(await page.locator('#settings-network-icon').getAttribute('data-icon'),'network');
