@@ -585,7 +585,7 @@ struct RootView: View {
                         Text(model.status).font(.system(size: 11)).lineLimit(2)
                     }
                     Spacer()
-                    Text("v2.1.8 · 本地测试 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("v2.1.8 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 24).padding(.vertical, 12)
             }.background(Color(nsColor: .textBackgroundColor))
         }.frame(minWidth: 980, minHeight: 700).tint(accent).textSelection(.disabled)
