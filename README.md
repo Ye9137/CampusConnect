@@ -17,7 +17,7 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows / macOS 2.1.8 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.8) · [Windows 更新说明](Windows/2.1.8-更新说明.md) · [macOS 更新说明](macOS/2.1.8-更新说明.md)。认证填写无法匹配时说明具体原因，提供分步处理向导，并定位到对应设置输入框。新版继续采用非商业使用条款。
+**Windows / macOS 2.1.8 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/latest) · [Windows 更新说明](Windows/2.1.8-更新说明.md) · [macOS 更新说明](macOS/2.1.8-更新说明.md)。认证填写无法匹配时说明具体原因，提供分步处理向导，并定位到对应设置输入框。新版继续采用非商业使用条款。
 
 
 
@@ -182,7 +182,9 @@ ping 使用系统路由，可能经过 VPN。提供 Windows x64 与 macOS Apple 
 
 ## 下载
 
-**[Windows 2.1.0 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/windows-v2.1.0/CampusConnect-Windows-x64-2.1.0-Setup.exe)** · **[macOS 2.0.3 通用版](https://github.com/Ye9137/CampusConnect/releases/download/macos-v2.0.3/CampusConnect-macOS-universal-2.0.3.zip)** · [Windows 源码与校验文件](https://github.com/Ye9137/CampusConnect/releases/tag/windows-v2.1.0)
+**[Windows 2.1.8 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.1.8/CampusConnect-Windows-x64-2.1.8-Setup.exe)** · **[macOS 2.1.8 通用版](https://github.com/Ye9137/CampusConnect/releases/download/v2.1.8/CampusConnect-macOS-universal-2.1.8.zip)** · [最新版源码与校验文件](https://github.com/Ye9137/CampusConnect/releases/latest)
+
+仅提供最新版下载，历史版本下载已关闭。
 
 ## 2.0 正式版界面预览
 
