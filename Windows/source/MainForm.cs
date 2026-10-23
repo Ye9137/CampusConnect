@@ -45,7 +45,7 @@ internal sealed partial class MainForm : Form
     {
         this.verificationPath = verificationPath;
         portal = new(GetBrowserEnvironmentAsync);
-        Text = "校园网助手";
+        Text = "校园Wi-Fi小助手";
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(1280, 860);
         MinimumSize = new Size(996, 739);
@@ -62,12 +62,12 @@ internal sealed partial class MainForm : Form
         menu.Items.Add("刷新界面", null, (_, _) => RestoreWindow());
         menu.Items.Add("暂停自动连接", null, (_, _) => Pause());
         menu.Items.Add("退出", null, (_, _) => { exiting = true; Close(); });
-        tray = new NotifyIcon { Icon = Icon, Text = "校园网助手", Visible = true, ContextMenuStrip = menu };
+        tray = new NotifyIcon { Icon = Icon, Text = "校园Wi-Fi小助手", Visible = true, ContextMenuStrip = menu };
         tray.DoubleClick += (_, _) => RestoreWindow();
         FormClosing += (_, e) => {
             if (!exiting && e.CloseReason == CloseReason.UserClosing) {
                 e.Cancel = true; Hide();
-                tray.ShowBalloonTip(2500, "校园网助手", "程序保留在系统托盘，右键图标可暂停或退出。", ToolTipIcon.Info);
+                tray.ShowBalloonTip(2500, "校园Wi-Fi小助手", "程序保留在系统托盘，右键图标可暂停或退出。", ToolTipIcon.Info);
             }
         };
         FormClosed += (_, _) => {
@@ -80,6 +80,15 @@ internal sealed partial class MainForm : Form
             portalStatus = message; UpdatePortalVisibility(); PushState();
         };
         portal.AddressChanged += () => PushState();
+        portal.Problem += problem => BeginInvoke((Action)(() => {
+            if (IsDisposed || !ReferenceEquals(portal.CurrentProblem, problem)) return;
+            RestoreWindow();
+            Navigate("portal");
+            var result = MessageBox.Show(this, problem.Summary + "\n\n修改建议：\n" + problem.Advice +
+                "\n\n是否打开校园网设置进行修改？", "校园Wi-Fi小助手 · " + problem.Title,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (result == DialogResult.Yes) Navigate("settings");
+        }));
         portal.CaptchaRequired += () => { Navigate("portal"); };
         portal.Submitted += async () => {
             var expected = generation;
@@ -189,7 +198,7 @@ internal sealed partial class MainForm : Form
                 Post(new { kind = "restore", page, snapshot = shellSnapshot });
                 if (!firstReady) { UpdatePollingSchedule(); break; }
                 if (verificationPath is not null) {
-                    var result = await shell.CoreWebView2.ExecuteScriptAsync("JSON.stringify({pageCount:document.querySelectorAll('.nav button').length,title:document.title,passwordMasked:document.getElementById('password').type==='password',startupToggle:!!document.getElementById('startup'),byYe:document.querySelector('.author').textContent})");
+                    var result = await shell.CoreWebView2.ExecuteScriptAsync("JSON.stringify({pageCount:document.querySelectorAll('.nav button').length,title:document.title,passwordMasked:document.getElementById('password').type==='password',startupToggle:!!document.getElementById('startup'),byYe:document.querySelector('.author').textContent,nonCommercial:document.querySelector('.license-note').innerText.includes('禁止商用'),operatorHint:document.getElementById('service-help').textContent.includes('如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。')})");
                     var snapshot = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(JsonSerializer.Deserialize<string>(result) ?? "{}") ?? [];
                     snapshot["mainWindowVisible"] = JsonSerializer.SerializeToElement(Visible);
                     snapshot["showInTaskbar"] = JsonSerializer.SerializeToElement(ShowInTaskbar);
@@ -300,7 +309,7 @@ internal sealed partial class MainForm : Form
     private void SendState()
     {
         var connectionLabel = saved.ConnectionLabel;
-        var windowTitle = "校园网助手 · " + connectionLabel;
+        var windowTitle = "校园Wi-Fi小助手 · " + connectionLabel;
         if (Text != windowTitle) Text = windowTitle;
         if (tray.Text != windowTitle) tray.Text = windowTitle;
         var connected = saved.MatchesNetwork(currentSsid, saved.IsWired && CampusNetwork.ReadWiredInterface(saved) is not null);

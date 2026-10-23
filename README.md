@@ -1,4 +1,4 @@
-# 校园 Wi-Fi 助手 · CampusConnect
+# 校园Wi-Fi小助手 · CampusConnect
 
 > 这个程序本来只是做给自己用的，奈何你们也想用。没办法，那就继续开发下去吧。
 
@@ -17,16 +17,25 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows / macOS 2.1.6 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.6) · [Windows 更新说明](Windows/2.1.6-更新说明.md) · [macOS 更新说明](macOS/2.1.6-更新说明.md)。补充广东海洋大学支持说明，所有填写项默认空白，已保存配置保留。
+**Windows / macOS 2.1.7**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/tag/v2.1.7) · [Windows 更新说明](Windows/2.1.7-更新说明.md) · [macOS 更新说明](macOS/2.1.7-更新说明.md)。更名为校园Wi-Fi小助手，新增认证错误弹窗与修改建议，明确运营商选项留空提示；新版采用非商业使用条款。
 
 
 
 [![Build](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml/badge.svg)](https://github.com/Ye9137/CampusConnect/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: Non-Commercial](https://img.shields.io/badge/License-Non--Commercial-orange.svg)](LICENSE)
 
-由 [Ye9137](https://github.com/Ye9137) 维护，使用 MIT 许可证开源。
+由 [Ye9137](https://github.com/Ye9137) 维护，源码公开，采用[非商业使用许可证](LICENSE)。
+
+> **新版禁止商用，商业使用须事先获得作者 Ye9137 的明确书面授权。** 历史 MIT 授权及第三方许可仍按原条款适用。
 
 分别为 macOS 和 Windows 制作的桌面校园网连接工具。请在设置中填写自己的校园 Wi-Fi 和认证地址；有线与无线分别保存，未配置时保持空白。
+
+## Windows / macOS 2.1.7
+
+- 窗口、托盘或菜单栏、应用信息及 Windows 安装与快捷方式统一命名为“校园Wi-Fi小助手”。升级继续使用已有配置和程序标识。
+- 认证页加载失败、地址不匹配、服务选项错误、登录失败或无法完成自动填写时，弹窗说明原因及修改建议，可进入设置；每次认证尝试只弹一次，取消导航和正常登录不触发错误提示。
+- 运营商输入框明确提示：**如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。** 需要选择时填写网页显示的完整名称，保存后重新认证。
+- 新版采用非商业使用条款，商业使用需事先取得作者书面授权。
 
 ## Windows / macOS 2.1.6 正式版
 
@@ -253,7 +262,7 @@ Windows 2.1.0 仅在自动连接开启且未联网时每 1 秒检查目标网络
 
 ## Windows 1.3.0
 
-新增登录 Windows 后自动启动并留在托盘的独立开关；删除 Windows 网络诊断和运行记录页面；加入页面淡入及控件过渡，支持减少动态效果。左下角及安装器显示“By Ye · MIT 开源软件”。项目未新增或替换第三方组件的许可证。
+新增登录 Windows 后自动启动并留在托盘的独立开关；删除 Windows 网络诊断和运行记录页面；加入页面淡入及控件过渡，支持减少动态效果。历史版本的左下角及安装器当时显示“By Ye · MIT 开源软件”；2.1.7 起显示非商业授权声明。项目未新增或替换第三方组件的许可证。
 
 安装器改用优先解压速度的 zlib 压缩，详情显示实际释放文件的名称、大小、目标目录及安装阶段。Windows 实际安装耗时和登录启动待下一次虚拟机开启后验证；源码包含相应 Windows 测试。
 
@@ -333,6 +342,6 @@ python3 scripts/package-source.py
 
 ## 许可证
 
-本项目代码使用 [MIT 许可证](LICENSE)，允许使用、修改、分发和商业使用；分发时须保留版权声明和许可证。第三方依赖仍遵循各自的许可证，见 [第三方依赖说明](THIRD_PARTY_NOTICES.md)。
+新版采用 [CampusConnect 非商业使用许可证](LICENSE)。**禁止商用，商业使用须事先获得作者 Ye9137 的明确书面授权。** 允许非商业学习、使用、修改和免费分发，须保留署名、版权及许可声明。此前已授予的 MIT 权利不受影响，原 MIT 声明保留在许可证附录中。第三方依赖仍遵循各自的许可证，见 [第三方依赖说明](THIRD_PARTY_NOTICES.md)。
 
 提交 Issue 或 Pull Request 前，请移除账号、密码、个人配置及带身份信息的认证地址。

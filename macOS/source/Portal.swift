@@ -10,6 +10,8 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var loading = false
     var requiresInteraction = false
     var isAuthenticating: Bool { authenticationDeadline != nil || (!submitted && !filled && !requiresInteraction && fillingGeneration == generation) }
+    var onProblem: ((PortalProblem?) -> Void)?
+    private var problemGate = PortalProblemGate()
     var onSubmission: (() -> Void)?
     var onAuthentication: (() -> Void)?
     private var profile: CampusProfile?
@@ -23,8 +25,21 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     private var observingGeneration: Int?
     private var authenticationConfirmed = false
     private var internetConfirmed = false
+    private var pageHTTPError = false
     private let fillWiFi = WiFiService()
     private let campusProxy = CampusProxy()
+
+    private func clearProblem() {
+        problemGate.reset()
+        onProblem?(nil)
+    }
+    func reportFailure(_ code: String, _ message: String) {
+        generation += 1
+        requiresInteraction = true; filled = true; password = ""; authenticationDeadline = nil
+        loading = false; preparing = false
+        self.message = message
+        if let problem = problemGate.report(code) { onProblem?(problem) }
+    }
 
     override init() {
         let config = WKWebViewConfiguration()
@@ -37,6 +52,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func open(profile: CampusProfile, password: String, discoveryHost: String? = nil) {
+        clearProblem()
         generation += 1
         let expected = generation
         preparing = true
@@ -79,12 +95,13 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                 self.webView.configuration.websiteDataStore.proxyConfigurations = [ProxyConfiguration(httpCONNECTProxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))]
                 self.preparing = false
                 self.webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15))
-            case .failure(let error): self.loading = false; self.message = "校园直连初始化失败：\(error.localizedDescription)"
+            case .failure: self.reportFailure("load-failed", "校园直连初始化失败，请检查校园网络后重试。")
             }
         }
     }
 
     func stop() {
+        clearProblem()
         generation += 1
         profile = nil; password = ""; submitted = false; filled = false; requiresInteraction = false; authenticationDeadline = nil; authenticationConfirmed = false; internetConfirmed = false
         webView.stopLoading(); loading = false
@@ -99,8 +116,17 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if profile != nil, navigationResponse.isForMainFrame,
+           let response = navigationResponse.response as? HTTPURLResponse, response.statusCode >= 400 {
+            pageHTTPError = true
+            reportFailure("load-failed", "学校认证服务器返回 HTTP \(response.statusCode)，已暂停自动重试。")
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        generation += 1; loading = true
+        generation += 1; loading = true; pageHTTPError = false
         if authenticationDeadline != nil { observeAuthentication() }
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { startFilling() }
@@ -112,7 +138,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loading = false
         address = webView.url?.absoluteString ?? ""
-        guard !preparing, let profile else { return }
+        guard !preparing, !pageHTTPError, let profile else { return }
         guard let allowed = profile.validPortalURL else {
             message = "请确认下方页面是学校认证页，再使用当前地址保存配置。"; return
         }
@@ -132,6 +158,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func confirmInternetAccess() {
+        clearProblem()
         internetConfirmed = true; requiresInteraction = false
         authenticationDeadline = nil; submitted = true; filled = true; password = ""
         message = "已经连接成功"
@@ -139,6 +166,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     func reportInternetUnavailable() { internetConfirmed = false; message = "未连接网络" }
     private func confirmAuthentication() {
         guard !authenticationConfirmed else { return }
+        clearProblem()
         authenticationConfirmed = true; authenticationDeadline = nil
         submitted = true; filled = true; password = ""; requiresInteraction = false
         if !internetConfirmed { message = "学校已确认登录成功，正在检查实际联网状态。" }
@@ -159,7 +187,7 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                 if status == "authenticated" { self.confirmAuthentication(); return }
                 if status == "authentication-rejected" {
                     self.authenticationDeadline = nil; self.requiresInteraction = true
-                    self.message = "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"; return
+                    self.reportFailure("authentication-rejected", "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"); return
                 }
                 if Date() >= deadline {
                     self.authenticationDeadline = nil; self.requiresInteraction = true
@@ -186,10 +214,10 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
     private func evaluateFill(profile: CampusProfile, expected: Int, attempt: Int) {
         guard let allowed = profile.validPortalURL, let current = webView.url,
               PortalScript.origin(allowed) == PortalScript.origin(current) else {
-            message = "页面地址与保存的认证地址不同，请确认后更新地址。"; return
+            reportFailure("wrong-origin", "页面地址与保存的认证地址不同，请确认后更新地址。"); return
         }
         guard !profile.username.isEmpty, !password.isEmpty else {
-            message = "请在校园网设置中保存学号 / 账号和密码。"; return
+            reportFailure("missing-credentials", "请在校园网设置中保存学号 / 账号和密码。"); return
         }
         do {
             let script = try PortalScript.build(profile: profile, password: password)
@@ -205,41 +233,43 @@ final class PortalController: NSObject, ObservableObject, WKNavigationDelegate {
                 }
                 if error != nil {
                     self.requiresInteraction = true; self.filled = true; self.password = ""
-                    self.message = "页面脚本暂未就绪，请点击立即认证重试，或在页面手动登录。"; return
+                    self.reportFailure("script-failed", "页面脚本暂未就绪，请点击立即认证重试，或在页面手动登录。"); return
                 }
                 switch status {
                 case "authenticated": self.confirmAuthentication()
                 case "authentication-rejected":
                     self.requiresInteraction = true; self.filled = true; self.password = ""
-                    self.message = "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"
+                    self.reportFailure("authentication-rejected", "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。")
                 case "submitted", "already-submitted":
                     self.submitted = true; self.password = ""; self.requiresInteraction = true
                     self.authenticationDeadline = Date().addingTimeInterval(30)
                     self.message = "已触发登录，正在核验学校返回结果和已登录页面…"
                     self.onSubmission?(); self.observeAuthentication()
                 case "filled": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，请在页面点击登录。"
-                case "missing-submit": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "账号密码已填写，未识别登录按钮，请在网页中手动点击登录。"
-                case "missing-service": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "未找到或未能选中填写的服务选项，请检查完整名称或在网页中手动选择。网页没有选项时，请清空设置中的服务选项。"
-                case "service-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "认证页尚未选择运营商或服务。请在设置的“运营商 / 服务选项”中填写网页上的完整名称（如中国移动），保存后重新认证；也可在网页中手动选择并登录。"
-                case "waiting-agreement", "agreement-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "网页必选框或协议项无法自动确认，请在页面手动勾选后登录。"
+                case "missing-submit": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("missing-submit", "账号密码已填写，未识别登录按钮，请在网页中手动点击登录。")
+                case "missing-service": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("missing-service", "未找到或未能选中填写的服务选项，请检查完整名称或在网页中手动选择。网页没有选项时，请清空设置中的服务选项。")
+                case "service-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("service-required", "认证页尚未选择运营商或服务。请在设置的“运营商 / 服务选项”中填写网页上的完整名称（如中国移动），保存后重新认证；也可在网页中手动选择并登录。")
+                case "waiting-agreement", "agreement-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("agreement-required", "网页必选框或协议项无法自动确认，请在页面手动勾选后登录。")
                 case "manual-required": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "请在学校网页中手动输入验证码（支持英文字母和数字），核对后点击登录；如需运营商信息也请补充。"
                 case "waiting-submit", "submission-unconfirmed":
                     self.requiresInteraction = true; self.filled = true; self.password = ""
-                    self.message = "学校页面尚未确认提交，请查看页面提示；可点击立即认证重试或手动登录。"
-                case "waiting-ready": self.requiresInteraction = true; self.filled = true; self.password = ""; self.message = "学校认证参数尚未就绪，请检查页面后重试。"
-                case "invalid-selector": self.requiresInteraction = true; self.message = "认证页面暂时无法识别，请在网页中手动登录。"
-                case "wrong-origin": self.requiresInteraction = true; self.message = "认证地址不匹配，已暂停填写。"
-                default: self.requiresInteraction = true; self.message = "未识别登录表单，请在网页中手动登录。"
+                    self.reportFailure("submission-unconfirmed", "学校页面尚未确认提交，请查看页面提示；可点击立即认证重试或手动登录。")
+                case "waiting-ready": self.requiresInteraction = true; self.filled = true; self.password = ""; self.reportFailure("waiting-ready", "学校认证参数尚未就绪，请检查页面后重试。")
+                case "invalid-selector": self.requiresInteraction = true; self.reportFailure("missing-fields", "认证页面暂时无法识别，请在网页中手动登录。")
+                case "wrong-origin": self.requiresInteraction = true; self.reportFailure("wrong-origin", "认证地址不匹配，已暂停填写。")
+                default: self.requiresInteraction = true; self.reportFailure("missing-fields", "未识别登录表单，请在网页中手动登录。")
                 }
             }
-        } catch { message = error.localizedDescription }
+        } catch { reportFailure("script-failed", "认证页面暂时无法识别，请手动登录或查看处理建议。") }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
-        loading = false; message = "认证页打不开：\(error.localizedDescription)"
+        guard profile != nil else { return }
+        reportFailure("load-failed", "认证页打不开，请检查校园网络和认证地址。")
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        loading = false; message = "页面加载失败：\(error.localizedDescription)"
+        guard (error as NSError).code != NSURLErrorCancelled, profile != nil else { return }
+        reportFailure("load-failed", "页面加载失败，请检查校园网络和认证地址。")
     }
 }
 

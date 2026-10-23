@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.1.6</Version>
-    <FileVersion>2.1.6.2</FileVersion>
+    <Version>2.1.7</Version>
+    <FileVersion>2.1.7.0</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -20,7 +20,8 @@
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <Description>校园网助手 Windows 版</Description>
+    <Description>校园Wi-Fi小助手 Windows 版</Description>
+    <Product>校园Wi-Fi小助手</Product>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />

@@ -25,6 +25,7 @@ enum Page: String, CaseIterable {
     @Published var portalPassword = ""
     @Published var page = Page.dashboard
     @Published var showingFeedback = false
+    @Published var portalProblem: PortalProblem?
     @Published var currentSSID: String?
     @Published var wiredConnected = false
     @Published var wiredLink = false
@@ -66,6 +67,10 @@ enum Page: String, CaseIterable {
         connectionDrafts = ConnectionDrafts(configuration: configuration)
         saved = loaded; draft = connectionDrafts.settings(wired: loaded.isWired).profile; automatic = loaded.automatic
         super.init()
+        portal.onProblem = { [weak self] problem in
+            self?.portalProblem = problem
+            if problem != nil { self?.selectPage(.portal) }
+        }
         if preview { return }
         refreshWiredOptions()
         refreshStartup()
@@ -481,7 +486,7 @@ struct RootView: View {
                     Image(systemName: "network").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
                         .frame(width: 48, height: 48).background(accent, in: RoundedRectangle(cornerRadius: 15))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("校园网络").font(.system(size: 19, weight: .bold))
+                        Text("校园Wi-Fi小助手").font(.system(size: 14, weight: .bold))
                         Text("CAMPUS CONNECT").font(.system(size: 9, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
                     }
                 }.padding(.top, 26)
@@ -511,7 +516,8 @@ struct RootView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("By Ye")
-                        Text("MIT 开源项目")
+                        Text("禁止商用")
+                        Text("商用须经作者授权")
                     }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.bottom, 6)
                     Button { model.showingFeedback.toggle() } label: {
                         HStack(spacing: 5) {
@@ -570,10 +576,16 @@ struct RootView: View {
                         Text(model.status).font(.system(size: 11)).lineLimit(2)
                     }
                     Spacer()
-                    Text("v2.1.6 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("v2.1.7 · macOS").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 24).padding(.vertical, 12)
             }.background(Color(nsColor: .textBackgroundColor))
         }.frame(minWidth: 980, minHeight: 700).tint(accent).textSelection(.disabled)
+            .alert(item: $model.portalProblem) { problem in
+                Alert(title: Text(problem.title),
+                      message: Text(problem.summary + "\n\n修改建议：\n" + problem.advice),
+                      primaryButton: .default(Text("修改设置")) { model.selectPage(.settings) },
+                      secondaryButton: .cancel(Text("知道了")))
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshStartup() }
     }
     var subtitle: String {
@@ -749,8 +761,8 @@ struct RootView: View {
                                     SecureField("输入上网密码", text: $model.portalPassword).textFieldStyle(.roundedBorder)
                                 }
                             }
-                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "可留空，按网页要求填写")
-                            Text("默认留空。仅当认证网页要求选择运营商或服务时，填写网页上的完整选项名称；网页没有此选项时保持空白。")
+                            field("运营商 / 服务选项", text: $model.draft.serviceOption, prompt: "网页没有需要选择的选项时请勿填写")
+                            Text("如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。需要选择时，填写网页显示的完整选项名称，保存后重新认证。")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                             Toggle("自动填写后点击登录", isOn: $model.draft.autoSubmit)
                         }
@@ -851,8 +863,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _model = StateObject(wrappedValue: AppModel())
     }
     var body: some Scene {
-        WindowGroup("校园网助手", id: "main") { RootView(model: model) }.defaultSize(width: 1060, height: 760)
-        MenuBarExtra("校园网络", systemImage: model.wiredMode ? "network" : "wifi") {
+        WindowGroup("校园Wi-Fi小助手", id: "main") { RootView(model: model) }.defaultSize(width: 1060, height: 760)
+        MenuBarExtra("校园Wi-Fi小助手", systemImage: model.wiredMode ? "network" : "wifi") {
             MenuBarControls(model: model)
         }
     }

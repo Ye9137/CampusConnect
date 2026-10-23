@@ -22,7 +22,7 @@ Unicode true
   !define RUNTIME "win-x64"
 !endif
 !ifndef VERSION
-  !define VERSION "2.1.6"
+  !define VERSION "2.1.7"
 !endif
 !ifndef SIZE_KB
   !define SIZE_KB 0
@@ -32,7 +32,7 @@ Unicode true
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\CampusConnect.Windows"
 !define WEBVIEW_KEY "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-Name "校园 Wi-Fi 助手"
+Name "校园Wi-Fi小助手"
 OutFile "${OUTPUT}"
 ; Trailing slash disables NSIS adding the default folder name after Browse.
 InstallDir "$LOCALAPPDATA\Programs\CampusConnect\"
@@ -43,12 +43,12 @@ RequestExecutionLevel user
 SetCompressor /FINAL zlib
 ShowInstDetails show
 ShowUninstDetails show
-BrandingText "By Ye · MIT 开源软件"
-VIProductVersion "2.1.6.2"
+BrandingText "By Ye · 禁止商用，商用须经作者授权"
+VIProductVersion "2.1.7.0"
 !define MUI_ICON "../source/AppIcon.ico"
 !define MUI_UNICON "../source/AppIcon.ico"
-VIAddVersionKey /LANG=2052 "ProductName" "校园 Wi-Fi 助手安装程序"
-VIAddVersionKey /LANG=2052 "FileDescription" "CampusConnect Windows 安装程序"
+VIAddVersionKey /LANG=2052 "ProductName" "校园Wi-Fi小助手安装程序"
+VIAddVersionKey /LANG=2052 "FileDescription" "校园Wi-Fi小助手 Windows 安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=2052 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "CampusConnect contributors"
@@ -61,7 +61,7 @@ Var SkipWebView
 Var StartupCommand
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "欢迎安装校园 Wi-Fi 助手"
+!define MUI_WELCOMEPAGE_TITLE "欢迎安装校园Wi-Fi小助手"
 !define MUI_WELCOMEPAGE_TEXT "本向导将安装 CampusConnect ${VERSION}。$\r$\n$\r$\n您可以选择安装目录、创建桌面快捷方式，并在安装完成后立即运行。$\r$\n$\r$\n程序安装到当前用户，已包含 .NET 与验证码模型。缺少组件时，将从微软下载 WebView2 或 Visual C++ 运行库（需要联网，可能提示管理员授权）。"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_DIRECTORYPAGE_VARIABLE $ChosenDir
@@ -71,8 +71,8 @@ Var StartupCommand
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CampusConnect.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "立即运行校园 Wi-Fi 助手"
-!define MUI_FINISHPAGE_TEXT "校园 Wi-Fi 助手已安装。$\r$\n$\r$\n安装目录：$INSTDIR$\r$\n$\r$\n首次使用请在设置中填写自己的校园账号密码。自动连接默认关闭。关闭主窗口后，程序保留在系统托盘。"
+!define MUI_FINISHPAGE_RUN_TEXT "立即运行校园Wi-Fi小助手"
+!define MUI_FINISHPAGE_TEXT "校园Wi-Fi小助手已安装。$\r$\n$\r$\n安装目录：$INSTDIR$\r$\n$\r$\n首次使用请在设置中填写自己的校园账号密码。自动连接默认关闭。关闭主窗口后，程序保留在系统托盘。"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 UninstPage custom un.DataPage un.DataPageLeave
@@ -87,7 +87,7 @@ Function ${PREFIX}CheckRunning
   ${If} $0 != 0
     System::Call 'kernel32::CloseHandle(p r0)'
     IfSilent silent_abort
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "校园 Wi-Fi 助手正在运行。请右键系统托盘图标选择退出，然后点击重试。" IDRETRY retry
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "校园Wi-Fi小助手正在运行。请右键系统托盘图标选择退出，然后点击重试。" IDRETRY retry
     Quit
     silent_abort:
     SetErrorLevel 2
@@ -241,7 +241,7 @@ Section "程序文件与开始菜单快捷方式（必需）" SEC_APP
   ClearErrors
   DetailPrint "[4/5] 注册应用与卸载入口（当前用户）"
   WriteRegStr HKCU "${APP_KEY}" "InstallDir" "$INSTDIR"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "校园 Wi-Fi 助手"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "校园Wi-Fi小助手"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "CampusConnect 项目"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
@@ -259,12 +259,17 @@ Section "程序文件与开始菜单快捷方式（必需）" SEC_APP
     IfErrors install_registration_failed
   ${EndIf}
   DetailPrint "[5/5] 创建开始菜单快捷方式"
-  DetailPrint "$SMPROGRAMS\校园 Wi-Fi 助手\校园 Wi-Fi 助手.lnk"
-  ; Apply the selected desktop option on upgrades too.
+  ; Remove only known old shortcuts when upgrading to the new display name.
   Delete "$DESKTOP\校园 Wi-Fi 助手.lnk"
-  CreateDirectory "$SMPROGRAMS\校园 Wi-Fi 助手"
-  CreateShortcut "$SMPROGRAMS\校园 Wi-Fi 助手\校园 Wi-Fi 助手.lnk" "$INSTDIR\CampusConnect.exe" "" "$INSTDIR\CampusConnect.exe" 0
-  CreateShortcut "$SMPROGRAMS\校园 Wi-Fi 助手\卸载校园 Wi-Fi 助手.lnk" "$INSTDIR\Uninstall.exe"
+  Delete "$SMPROGRAMS\校园 Wi-Fi 助手\校园 Wi-Fi 助手.lnk"
+  Delete "$SMPROGRAMS\校园 Wi-Fi 助手\卸载校园 Wi-Fi 助手.lnk"
+  RMDir "$SMPROGRAMS\校园 Wi-Fi 助手"
+  DetailPrint "$SMPROGRAMS\校园Wi-Fi小助手\校园Wi-Fi小助手.lnk"
+  ; Apply the selected desktop option on upgrades too.
+  Delete "$DESKTOP\校园Wi-Fi小助手.lnk"
+  CreateDirectory "$SMPROGRAMS\校园Wi-Fi小助手"
+  CreateShortcut "$SMPROGRAMS\校园Wi-Fi小助手\校园Wi-Fi小助手.lnk" "$INSTDIR\CampusConnect.exe" "" "$INSTDIR\CampusConnect.exe" 0
+  CreateShortcut "$SMPROGRAMS\校园Wi-Fi小助手\卸载校园Wi-Fi小助手.lnk" "$INSTDIR\Uninstall.exe"
   Goto install_complete
   install_files_failed:
     MessageBox MB_OK|MB_ICONSTOP "程序文件写入失败。请检查安装目录权限和安全软件提示，再重新运行安装包。"
@@ -282,8 +287,8 @@ Section "程序文件与开始菜单快捷方式（必需）" SEC_APP
 SectionEnd
 
 Section "创建桌面快捷方式" SEC_DESKTOP
-  DetailPrint "创建桌面快捷方式：$DESKTOP\校园 Wi-Fi 助手.lnk"
-  CreateShortcut "$DESKTOP\校园 Wi-Fi 助手.lnk" "$INSTDIR\CampusConnect.exe" "" "$INSTDIR\CampusConnect.exe" 0
+  DetailPrint "创建桌面快捷方式：$DESKTOP\校园Wi-Fi小助手.lnk"
+  CreateShortcut "$DESKTOP\校园Wi-Fi小助手.lnk" "$INSTDIR\CampusConnect.exe" "" "$INSTDIR\CampusConnect.exe" 0
 SectionEnd
 
 Section "缺少时安装 Microsoft WebView2（需要联网）" SEC_WEBVIEW
@@ -375,10 +380,10 @@ Section "Uninstall"
   !include "${DELETE_MANIFEST}"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
-  Delete "$DESKTOP\校园 Wi-Fi 助手.lnk"
-  Delete "$SMPROGRAMS\校园 Wi-Fi 助手\校园 Wi-Fi 助手.lnk"
-  Delete "$SMPROGRAMS\校园 Wi-Fi 助手\卸载校园 Wi-Fi 助手.lnk"
-  RMDir "$SMPROGRAMS\校园 Wi-Fi 助手"
+  Delete "$DESKTOP\校园Wi-Fi小助手.lnk"
+  Delete "$SMPROGRAMS\校园Wi-Fi小助手\校园Wi-Fi小助手.lnk"
+  Delete "$SMPROGRAMS\校园Wi-Fi小助手\卸载校园Wi-Fi小助手.lnk"
+  RMDir "$SMPROGRAMS\校园Wi-Fi小助手"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CampusConnect.Windows"
   DeleteRegKey HKCU "${APP_KEY}"

@@ -16,6 +16,8 @@ jobs:
         run: zsh macOS/test.sh
       - name: Test native WKWebView first submission
         run: zsh macOS/test-frames.sh
+      - name: Test native portal error notices
+        run: zsh macOS/test-notices.sh
       - name: Build universal app
         run: zsh macOS/source/build.sh
       - name: Package app

@@ -3,12 +3,12 @@
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>CampusConnect</string>
 <key>CFBundleIdentifier</key><string>local.campusconnect.mac</string>
-<key>CFBundleName</key><string>CampusConnect</string>
-<key>CFBundleDisplayName</key><string>校园网助手</string>
+<key>CFBundleName</key><string>校园Wi-Fi小助手</string>
+<key>CFBundleDisplayName</key><string>校园Wi-Fi小助手</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>2.1.6</string>
-<key>CFBundleGetInfoString</key><string>CampusConnect 2.1.6</string>
-<key>CFBundleVersion</key><string>21600</string>
+<key>CFBundleShortVersionString</key><string>2.1.7</string>
+<key>CFBundleGetInfoString</key><string>校园Wi-Fi小助手 2.1.7</string>
+<key>CFBundleVersion</key><string>21700</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>

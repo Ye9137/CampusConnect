@@ -3,6 +3,36 @@ using System.Text.Json;
 
 namespace CampusConnect;
 
+internal sealed record PortalProblem(string Code, string Title, string Summary, string Advice)
+{
+    public static PortalProblem? From(string code) => code switch {
+        "load-failed" => new(code, "认证页面无法打开", "认证页面加载失败，已暂停自动重试。", "先确认已连接校园 Wi-Fi 或网线，再核对认证地址。可在系统浏览器中打开学校登录页；地址变化时，在确认属于学校后更新认证地址。"),
+        "wrong-origin" => new(code, "请核对认证地址", "当前页面与允许的认证地址不匹配，已停止自动填写。", "确认当前页面属于学校后，使用“使用当前页面地址”更新认证地址，再保存并重新认证。不要将外站地址保存为认证入口。"),
+        "missing-service" => new(code, "请修改运营商 / 服务选项", "未找到或未能选中设置中填写的服务选项，无法自动填写信息。", "如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。请清空设置中的“运营商 / 服务选项”；有选项时填写网页显示的完整名称，保存后重新认证。"),
+        "service-required" => new(code, "请选择运营商或服务", "认证网页要求选择运营商或服务，当前尚未选中。", "在“运营商 / 服务选项”中填写网页显示的完整名称，例如中国移动，保存后重新认证；也可在学校网页中手动选择后登录。"),
+        "authentication-rejected" => new(code, "学校未接受本次登录", "学校页面返回登录失败，已暂停自动重试。", "先查看学校网页的具体提示，再核对上网账号、密码、运营商和验证码。修改后保存设置并重新认证；账号欠费、停用或并发限制请联系学校处理。"),
+        "missing-credentials" => new(code, "请补充上网账号和密码", "尚未保存完整的上网认证信息。", "在校园网设置中填写上网账号和上网密码，保存后重新认证。Wi-Fi 密码与上网认证密码可能不同。"),
+        "missing-submit" => new(code, "未识别登录按钮", "账号密码已填写，但未找到可用的登录按钮。", "请先在学校网页中手动点击登录。若仍无法登录，请通过左下角反馈入口提供学校名称和失败过程。"),
+        "agreement-required" => new(code, "请确认上网协议", "网页必选勾选项或协议尚未确认。", "在认证网页阅读并勾选必需的上网协议或使用承诺，再手动登录。不要勾选与上网无关的选项。"),
+        "waiting-ready" => new(code, "学校页面尚未就绪", "等待后仍未取得学校认证所需的页面参数。", "等待学校网页加载完成，再点击立即认证；也可手动登录。若持续出现，请核对认证地址并反馈学校名称和失败过程。"),
+        "submission-unconfirmed" => new(code, "尚未确认登录提交", "学校页面未确认本次登录已提交。", "检查网页是否要求验证码、服务选项或协议，补充后手动登录；不要反复提交相同信息。"),
+        "missing-fields" => new(code, "未识别认证表单", "等待后仍未找到可自动填写的登录表单。", "确认认证地址确实打开学校登录页。若网页没有运营商选项，请清空“运营商 / 服务选项”；也可在网页中手动登录并通过左下角反馈入口反馈。"),
+        "script-failed" => new(code, "自动填写未完成", "学校页面脚本未能完成自动填写，已暂停自动重试。", "等待页面加载完成后点击立即认证，或在网页中手动登录。若仍失败，请核对认证地址和服务选项，并反馈学校名称和失败过程。"),
+        _ => null
+    };
+}
+
+internal sealed class PortalProblemGate
+{
+    public PortalProblem? Current { get; private set; }
+    public PortalProblem? Report(string code)
+    {
+        if (Current is not null) return null;
+        return Current = PortalProblem.From(code);
+    }
+    public void Reset() => Current = null;
+}
+
 public sealed record CampusProfile
 {
     public string Ssid { get; init; } = "";

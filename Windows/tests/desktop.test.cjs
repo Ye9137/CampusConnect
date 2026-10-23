@@ -19,13 +19,17 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await page.locator('#permission-card').isVisible(),true);
     assert.equal(await page.locator('#page-diagnostics,#page-activity').count(),0);
     assert.equal(await page.locator('.author').textContent(),'By Ye');
+    assert.equal(await page.title(),'校园Wi-Fi小助手');
+    assert.equal(await page.locator('.brand-name').textContent(),'校园Wi-Fi小助手');
+    assert((await page.locator('#service-help').textContent()).includes('如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。'));
+    assert.equal(await page.locator('#serviceOption').getAttribute('title'),'如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。');
     await page.evaluate(state=>campus.receive({kind:'state',state:{...state,campusConnected:true,internetOnline:false}}),state);
     assert.equal(await page.locator('#status-dot').evaluate(e=>e.classList.contains('online')),false);
     await page.evaluate(state=>campus.receive({kind:'state',state:{...state,campusConnected:true,internetOnline:true}}),state);
     assert.equal(await page.locator('#status-dot').evaluate(e=>e.classList.contains('online')),true);
     await page.evaluate(state=>campus.receive({kind:'state',state}),state);
 
-    assert.equal(await page.locator('.license-note').textContent(),'MIT 开源项目');
+    assert.equal(await page.locator('.license-note').innerText(),'禁止商用\n商用须经作者授权');
     assert.deepEqual(await page.locator('.author').evaluate(e=>({align:getComputedStyle(e).textAlign,size:getComputedStyle(e).fontSize})),{align:'left',size:'11px'});
     assert.equal(await page.locator('.author').evaluate(e=>getComputedStyle(e).color),await page.locator('.license-note').evaluate(e=>getComputedStyle(e).color));
     // Real pointer movement switches without a click and preserves drafts.

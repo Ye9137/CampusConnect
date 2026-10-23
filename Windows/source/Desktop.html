@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
-<title>校园网助手</title>
+<title>校园Wi-Fi小助手</title>
 <style>
 :root{color-scheme:light;--accent:#0a7a85;--accent-soft:#e6f1f2;--text:#242426;--muted:#808084;--line:rgba(0,0,0,.09);--sidebar:#f3f3f3;--page:#fff;--card:#fff;--button:#fff;--input:#fff}
 *{box-sizing:border-box}
@@ -20,7 +20,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .sidebar{background:var(--sidebar);border-right:1px solid var(--line);padding:26px 18px 24px;display:flex;flex-direction:column}
 .brand{display:flex;gap:11px;align-items:center;margin-bottom:28px}
 .brand-logo{width:48px;height:48px;border-radius:15px;background:var(--accent);color:white;display:grid;place-items:center}
-.brand-logo svg{width:30px;height:30px}.brand-name{font-size:19px;font-weight:700;white-space:nowrap}
+.brand-logo svg{width:30px;height:30px}.brand-name{font-size:14px;font-weight:700;white-space:nowrap}
 .brand-caption{font-size:9px;font-weight:600;letter-spacing:1.5px;color:var(--muted);margin-top:3px;white-space:nowrap}
 .nav{display:flex;flex-direction:column;gap:7px;position:relative;isolation:isolate}.nav::before{content:"";position:absolute;top:0;left:0;right:0;height:45px;border-radius:10px;background:var(--accent-soft);transform:translateY(var(--nav-offset,0px));z-index:-1;pointer-events:none;transition:none}.nav button{border:0;box-shadow:none;background:none;display:flex;align-items:center;gap:12px;text-align:left;padding:13px 14px;border-radius:10px;height:45px;font-size:13px}
 .nav button.active{color:var(--accent);font-weight:600;background:transparent}.nav button svg{width:20px}
@@ -83,13 +83,13 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
 <body>
 <div class="app">
 <aside class="sidebar">
-  <div class="brand"><div class="brand-logo" data-icon="network"></div><div><div class="brand-name">校园网络</div><div class="brand-caption">CAMPUS CONNECT</div></div></div>
+  <div class="brand"><div class="brand-logo" data-icon="network"></div><div><div class="brand-name">校园Wi-Fi小助手</div><div class="brand-caption">CAMPUS CONNECT</div></div></div>
   <nav class="nav" aria-label="主导航">
     <button data-page="dashboard" class="active"><i id="dashboard-icon" data-icon="wifi"></i>网络概览</button>
     <button data-page="settings"><i data-icon="sliders"></i>校园网设置</button>
     <button data-page="portal"><i data-icon="globe"></i>上网认证</button>
   </nav>
-  <div class="sidebar-footer"><div class="author">By Ye</div><div class="license-note">MIT 开源项目</div><details class="feedback-help"><summary>如果遇到问题请点击：<span class="feedback-icon" aria-hidden="true">!</span></summary><div class="feedback-note" aria-label="问题反馈">使用中如有任何问题，请关注抖音 <strong>3325725312q</strong>，进群反馈。<br><br>如果使用正常，也欢迎关注我的抖音，并发送你的大学名称，帮助更多小伙伴使用小助手。</div></details><div class="row"><i data-icon="shield"></i>本地运行</div><div class="small muted">账号密码加密保存在本机<br>关闭窗口后仍可在托盘运行</div></div>
+  <div class="sidebar-footer"><div class="author">By Ye</div><div class="license-note">禁止商用<br>商用须经作者授权</div><details class="feedback-help"><summary>如果遇到问题请点击：<span class="feedback-icon" aria-hidden="true">!</span></summary><div class="feedback-note" aria-label="问题反馈">使用中如有任何问题，请关注抖音 <strong>3325725312q</strong>，进群反馈。<br><br>如果使用正常，也欢迎关注我的抖音，并发送你的大学名称，帮助更多小伙伴使用小助手。</div></details><div class="row"><i data-icon="shield"></i>本地运行</div><div class="small muted">账号密码加密保存在本机<br>关闭窗口后仍可在托盘运行</div></div>
 </aside>
 <main class="main">
   <header class="header"><div><h1 id="title">网络概览</h1><div class="subtitle" id="subtitle">到达校园，连接自动完成。</div></div><div class="header-actions"><div class="spinner" id="busy" hidden></div><button class="refresh" data-action="refresh"><i data-icon="refresh"></i>刷新网络</button></div></header>
@@ -141,8 +141,8 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
           <div id="portal-fields" class="stack">
             <label class="field">认证页面地址<input id="portalUrl" placeholder="输入学校认证页面地址" autocomplete="off"></label>
             <div class="field-row"><label class="field">学号 / 上网账号<input id="username" placeholder="输入账号" autocomplete="off"></label><label class="field">上网密码<input id="password" type="password" placeholder="输入上网密码" autocomplete="new-password"></label></div>
-            <label class="field">运营商 / 服务选项<input id="serviceOption" placeholder="可留空，按网页要求填写" autocomplete="off" aria-describedby="service-help"></label>
-            <div class="settings-note" id="service-help">默认留空。仅当认证网页要求选择运营商或服务时，填写网页上的完整选项名称；网页没有此选项时保持空白。</div>
+            <label class="field">运营商 / 服务选项<input id="serviceOption" placeholder="网页没有需要选择的选项时请勿填写" title="如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。" autocomplete="off" aria-describedby="service-help"></label>
+            <div class="settings-note" id="service-help">如果认证网页没有需要选择的选项，请不要填写，否则会导致无法自动填写信息。需要选择时，填写网页显示的完整选项名称，保存后重新认证。</div>
             <label class="check" id="browser-submit"><input id="autoSubmit" type="checkbox" checked>自动填写后点击登录</label>
 
           </div>
@@ -158,7 +158,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
       <div class="portal-slot" id="portal-slot"><div class="hint"><i data-icon="globe"></i><p>学校认证页面将在这里打开<br><span id="portal-connection-hint">请先连接已设置的校园 Wi-Fi</span></p></div></div>
     </section>
   </div>
-  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.6 · Windows</span></footer>
+  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.1.7 · Windows</span></footer>
 </main>
 </div>
 <script>

@@ -8,6 +8,21 @@ import JavaScriptCore
         if !condition() { fputs("FAIL: \(message)\n", stderr); exit(1) }
     }
     static func main() throws {
+        var noticeGate = PortalProblemGate()
+        for normal in ["authenticated", "filled", "submitted", "manual-required", "waiting-submit", "captcha-required"] {
+            expect(noticeGate.report(normal) == nil, "normal and pending authentication never shows an error popup")
+        }
+        let serviceProblem = noticeGate.report("missing-service")
+        expect(serviceProblem?.advice.contains("请清空设置中的") == true && serviceProblem?.advice.contains("无法自动填写信息") == true, "operator mismatch explains how to clear an unnecessary setting")
+        expect(noticeGate.report("missing-service") == nil && noticeGate.report("load-failed") == nil, "one popup per authentication attempt across multiple callbacks")
+        noticeGate.reset()
+        expect(noticeGate.current == nil, "stop or successful authentication clears a queued error")
+        expect(noticeGate.report("load-failed")?.advice.contains("认证地址") == true, "new attempt can report a fresh load error with advice")
+        for code in ["wrong-origin", "service-required", "authentication-rejected", "missing-credentials", "missing-submit", "agreement-required", "waiting-ready", "submission-unconfirmed", "missing-fields", "script-failed"] {
+            noticeGate.reset()
+            let problem = noticeGate.report(code)
+            expect(problem != nil && !(problem?.title.isEmpty ?? true) && !(problem?.summary.isEmpty ?? true) && !(problem?.advice.isEmpty ?? true), "terminal failure provides guidance: \(code)")
+        }
         if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--frame-script" {
             var profile = CampusProfile(); profile.portalURL = "http://portal.test"; profile.username = "dummy-user"; profile.autoSubmit = true
             try PortalScript.build(profile: profile, password: "dummy-password").write(toFile: CommandLine.arguments[2], atomically: true, encoding: .utf8)

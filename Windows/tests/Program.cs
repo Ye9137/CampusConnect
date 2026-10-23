@@ -10,6 +10,20 @@ void Invalid(CampusProfile profile) {
     throw new Exception("Invalid profile accepted.");
 }
 PortalRedirectTests.Run(Expect);
+var noticeGate = new PortalProblemGate();
+foreach (var normal in new[] { "authenticated", "filled", "submitted", "manual-required", "waiting-submit", "captcha-required" })
+    Expect(noticeGate.Report(normal) is null, "normal and pending authentication never shows an error popup");
+var serviceProblem = noticeGate.Report("missing-service");
+Expect(serviceProblem is not null && serviceProblem.Advice.Contains("请清空设置中的") && serviceProblem.Advice.Contains("无法自动填写信息"), "operator mismatch explains how to clear an unnecessary setting");
+Expect(noticeGate.Report("missing-service") is null && noticeGate.Report("load-failed") is null, "one popup per authentication attempt even if multiple callbacks report failures");
+noticeGate.Reset();
+Expect(noticeGate.Current is null, "stop or successful authentication clears a queued error");
+Expect(noticeGate.Report("load-failed")?.Advice.Contains("认证地址") == true, "a new attempt can report a fresh load error with address advice");
+foreach (var code in new[] { "wrong-origin", "service-required", "authentication-rejected", "missing-credentials", "missing-submit", "agreement-required", "waiting-ready", "submission-unconfirmed", "missing-fields", "script-failed" }) {
+    noticeGate.Reset();
+    var problem = noticeGate.Report(code);
+    Expect(problem is not null && problem.Title.Length > 0 && problem.Summary.Length > 0 && problem.Advice.Length > 0, "terminal failure provides concrete guidance: " + code);
+}
 Expect(!DesktopBridge.ControlsBusy(true, true), "background poll keeps every control usable");
 Expect(!DesktopBridge.ControlsBusy(false, false), "idle controls remain usable");
 Expect(DesktopBridge.ControlsBusy(true, false), "explicit scan and connect retain the operation lock");

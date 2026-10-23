@@ -10,10 +10,13 @@ $first = Join-Path $sandbox 'First install'
 $second = Join-Path $sandbox ('Second install ' + ([string][char]0x6821))
 if (Test-Path 'D:\') { $second = Join-Path 'D:\' ('CampusConnect directory test ' + ([string][char]0x6821) + ' ' + [guid]::NewGuid().ToString('N')) }
 $shell = New-Object -ComObject WScript.Shell
-$appName = ([string][char]0x6821) + ([string][char]0x56ed) + ' Wi-Fi ' + ([string][char]0x52a9) + ([string][char]0x624b)
+$appName = ([string][char]0x6821) + ([string][char]0x56ed) + 'Wi-Fi' + ([string][char]0x5c0f) + ([string][char]0x52a9) + ([string][char]0x624b)
 $desktopShortcut = Join-Path ($shell.SpecialFolders.Item('Desktop')) ($appName + '.lnk')
 $menuUninstallShortcut = Join-Path (Join-Path ($shell.SpecialFolders.Item('Programs')) $appName) (([string][char]0x5378) + ([string][char]0x8f7d) + $appName + '.lnk')
 $menuShortcut = Join-Path (Join-Path ($shell.SpecialFolders.Item('Programs')) $appName) ($appName + '.lnk')
+$legacyName = ([string][char]0x6821) + ([string][char]0x56ed) + ' Wi-Fi ' + ([string][char]0x52a9) + ([string][char]0x624b)
+$legacyDesktop = Join-Path ($shell.SpecialFolders.Item('Desktop')) ($legacyName + '.lnk')
+$legacyMenu = Join-Path ($shell.SpecialFolders.Item('Programs')) $legacyName
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -149,6 +152,8 @@ function Install-App([string]$Target, [switch]$Wizard) {
     $executables = @($appFiles | Where-Object { $_.Extension -eq '.exe' })
     if ($executables.Count -ne 2 -or ($executables.Name -notcontains 'Uninstall.exe')) { throw 'The installation must contain the app and uninstaller.' }
     if (-not (Test-Path (Join-Path $Target 'licenses/CampusConnect-LICENSE.txt'))) { throw 'Project license missing from installation.' }
+    $projectLicense = Get-Content (Join-Path $Target 'licenses/CampusConnect-LICENSE.txt') -Raw
+    if ($projectLicense -notmatch 'CampusConnect Non-Commercial License' -or $projectLicense -notmatch 'MIT License') { throw 'Current license or historical MIT notice missing from installation.' }
     if (-not (Test-Path (Join-Path $Target 'licenses/WebView2-LICENSE.txt'))) { throw 'WebView2 license missing from installation.' }
     # The app remains bundled; ONNX native libraries and model assets are
     # deliberately installed beside it. Require the exact runtime payload.
@@ -181,7 +186,13 @@ try {
     Install-App $first
     if (-not (Test-Path $sentinel)) { throw 'Uninstaller repair deleted unrelated files.' }
     Install-App $first
+    # Reproduce the old display-name shortcuts before upgrading to the new name.
+    Copy-Item -LiteralPath $desktopShortcut -Destination $legacyDesktop
+    New-Item -ItemType Directory -Path $legacyMenu -Force | Out-Null
+    Copy-Item -LiteralPath $menuShortcut -Destination (Join-Path $legacyMenu ($legacyName + '.lnk'))
+    Copy-Item -LiteralPath $menuUninstallShortcut -Destination (Join-Path $legacyMenu (([string][char]0x5378) + ([string][char]0x8f7d) + $legacyName + '.lnk'))
     Install-App $second -Wizard
+    if ((Test-Path -LiteralPath $legacyDesktop) -or (Test-Path -LiteralPath $legacyMenu)) { throw 'Upgrade left old display-name shortcuts behind.' }
     $startupCommand = (Get-ItemProperty $runKey).'CampusConnect.Windows'
     if ($startupCommand -ne ('"' + (Join-Path $second 'CampusConnect.exe') + '" --startup')) { throw 'Upgrade did not preserve startup or update its path.' }
     $uiReport = Join-Path $sandbox 'ui-report.json'
@@ -193,6 +204,7 @@ try {
     if (-not (Test-Path $uiReport)) { throw 'The single-file app could not create its UI.' }
     $uiResult = Get-Content $uiReport -Raw | ConvertFrom-Json
     if ($uiResult.pageCount -ne 3 -or -not $uiResult.passwordMasked -or -not $uiResult.startupToggle -or $uiResult.byYe -ne 'By Ye') { throw 'UI startup checks failed.' }
+    if ($uiResult.title -ne $appName -or -not $uiResult.nonCommercial -or -not $uiResult.operatorHint) { throw 'New name, non-commercial notice or operator hint missing from native UI.' }
     $trayReport = Join-Path $sandbox 'tray-report.json'
     $trayProcess = Start-Process -FilePath (Join-Path $second 'CampusConnect.exe') -ArgumentList ('--startup --verify-ui "' + $trayReport + '"') -PassThru
     if (-not $trayProcess.WaitForExit(60000)) { $trayProcess.Kill(); throw 'Tray startup did not initialize.' }
