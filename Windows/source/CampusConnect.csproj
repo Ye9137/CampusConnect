@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.1.8</Version>
-    <FileVersion>2.1.8.1</FileVersion>
+    <Version>2.1.9</Version>
+    <FileVersion>2.1.9.0</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -28,6 +28,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <EmbeddedResource Include="PortalContext.js" LogicalName="CampusConnect.PortalContext.js" />
     <EmbeddedResource Include="PortalTemplate.js" />
+    <EmbeddedResource Include="PortalAccount.js" LogicalName="CampusConnect.PortalAccount.js" />
     <EmbeddedResource Include="PortalAgreements.js" />
     <EmbeddedResource Include="../../macOS/source/PortalBootstrap.js" LogicalName="CampusConnect.PortalBootstrap.js" />
     <EmbeddedResource Include="PortalCaptcha.js" />

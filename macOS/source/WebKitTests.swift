@@ -41,11 +41,11 @@ import WebKit
         checks += 1
         if !value { throw AppError.message(message) }
     }
-    func load(html: String? = nil) async throws {
+    func load(html: String? = nil, baseURL: String = "http://portal.test/eportal/index.jsp") async throws {
         view.navigationDelegate = self
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             navigation = continuation
-            view.loadHTMLString(html ?? fixture, baseURL: URL(string: "http://portal.test/eportal/index.jsp"))
+            view.loadHTMLString(html ?? fixture, baseURL: URL(string: baseURL))
         }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -82,7 +82,108 @@ import WebKit
         }
         return result
     }
+    func accountPortalChecks() async throws {
+        let project = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let html = try String(contentsOf: project.appendingPathComponent("Windows/tests/fixtures/haust-account.html"), encoding: .utf8)
+        let jquery = try String(contentsOf: project.appendingPathComponent("Windows/tests/node_modules/jquery/dist/jquery.min.js"), encoding: .utf8)
+        let transport = #"""
+        <script>
+        window.fixtureRequests=[]; window.fixtureReply={code:0,online:{Username:'dummy-user',Name:'',UserMac:'',AddTime:''}};
+        $.ajaxTransport('+*',function(options){return {
+          send:function(_headers,complete){
+            if(options.url.indexOf('/api/config')===0){
+              window.fixtureReleaseConfig=()=>complete(200,'OK',{text:JSON.stringify({data:{password_config:{},password_rule_scope:{portal_auth:'1'}}})},'Content-Type: application/json');
+              return;
+            }
+            window.fixtureRequests.push(options.url);
+            const reply=options.url==='/api/account/login'?window.fixtureReply:{code:0};
+            setTimeout(()=>complete(200,'OK',{text:JSON.stringify(reply)},'Content-Type: application/json'),10);
+          },abort:function(){}
+        }});
+        </script>
+        """#
+        let page = html.replacingOccurrences(of: "<script src=\"/jquery.js\"></script>", with: "<script>" + jquery + "</script>" + transport)
+        let url = "http://portal.test/tpl/stu-ky/login_account.html?ip=10.0.0.8&mac=00:11:22:33:44:55"
+        var profile = CampusProfile(); profile.portalURL = url; profile.username = "dummy-user"; profile.autoSubmit = true
+        let status = try PortalScript.build(profile: profile, password: "", statusOnly: true)
+        func waitStatus() async throws -> String {
+            for _ in 0..<40 {
+                let value = try await js(status) as? String ?? "nil"
+                if value != "awaiting-authentication" { return value }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            return "timeout"
+        }
+        try await load(html: page, baseURL: url)
+        try expect(try await fill() == "waiting-ready", "native account form waits for async password configuration")
+        try expect(try await js("fixtureRequests.length") as? Int == 0, "native config wait sends no login request")
+        try await js("fixtureReleaseConfig(); true")
+        try expect(try await fill() == "submitted", "native account submits through original school functions")
+        try expect(try await waitStatus() == "authenticated", "native account observes actual login success")
+        try expect(try await js("JSON.stringify(fixtureRequests)") as? String == "[\"/api/account/check\",\"/api/account/login\"]", "native account preserves password check and login order")
+        try expect(try await js("JSON.stringify([postData.userIpv4,postData.userMac])") as? String == "[\"10.0.0.8\",\"00:11:22:33:44:55\"]", "native account retains gateway context")
+        try await load(html: page, baseURL: url)
+        try await js("fixtureReleaseConfig(); fixtureReply={code:1,msg:'dummy-password E20027'}; true")
+        try expect(try await fill() == "submitted", "native rejection still uses original login")
+        try expect(try await waitStatus() == "authentication-rejected:E20027", "native observes school E20027 without inventing meaning")
+        try expect(try await fill() == "authentication-rejected:E20027", "native rejection does not resubmit")
+        try expect(try await js("fixtureRequests.length") as? Int == 2, "native rejection leaves school request count unchanged")
+        try expect(try await js("JSON.stringify(__campusSubmitAttempt).includes('dummy-password')") as? Bool == false, "native diagnostic omits response text and password")
+        try await load(html: page, baseURL: url)
+        try expect(try await fill(submit: false) == "filled", "native manual fill does not need async config")
+        try expect(try await js("fixtureRequests.length") as? Int == 0, "native manual mode does not send login")
+        try await js("fixtureReleaseConfig(); document.getElementById('code').style.display='block'; true")
+        try expect(try await fill() == "manual-required", "native account waits for alphanumeric CAPTCHA")
+        try expect(try await js("fixtureRequests.length") as? Int == 0, "native empty CAPTCHA never submits")
+        try await js("document.getElementById('codeNumber').value='aB7Z'; true")
+        try expect(try await fill() == "submitted", "native manually confirmed CAPTCHA uses school login")
+        try expect(try await waitStatus() == "authenticated", "native CAPTCHA flow success is observed")
+        try expect(try await js("postData.captcha") as? String == "aB7Z", "native CAPTCHA case remains unchanged")
+    }
     func run() async throws {
+        // Exact user-supplied button; the surrounding offline form is synthetic.
+        let haustPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Windows/tests/fixtures/haust-login.html")
+        let haust = try String(contentsOf: haustPath, encoding: .utf8)
+        let destination = "https://aaa.school.test:8443/tpl/stu-ky/login_account.html?session=fixture"
+        var entryProfile = CampusProfile()
+        entryProfile.portalURL = "http://1.1.1.1"; entryProfile.username = "dummy-user"; entryProfile.autoSubmit = true
+        try await load(html: "<p>正在跳转…</p>", baseURL: destination)
+        let activeProfile = try PortalScript.atCurrentPage(profile: entryProfile, url: view.url!)
+        let landingProbe = try PortalScript.loginFormProbe(profile: activeProfile)
+        try expect(try await js(landingProbe) as? Bool == false, "redirect spinner waits without credentials")
+        try await load(html: haust, baseURL: destination)
+        try expect(try await js(landingProbe) as? Bool == true, "actual cross-origin landing form recognized")
+        let landingScript = try PortalScript.build(profile: activeProfile, password: "dummy-password")
+        try expect(try await js(landingScript) as? String == "submitted", "different host port and scheme receive scoped filling")
+        try expect(try await js("JSON.stringify(observed)") as? String == "[\"dummy-user\",\"dummy-password\"]", "redirected original school handler receives filled values")
+        try expect(try await js(landingScript) as? String == "already-submitted", "redirect landing submits once")
+        try expect(entryProfile.portalURL == "http://1.1.1.1", "dynamic destination does not overwrite saved address")
+        try await load(html: haust)
+        try expect(try await fill() == "submitted", "HAUST original button submits")
+        try expect(try await js("loginClicks") as? Int == 1, "HAUST checkForm handler called once")
+        try expect(try await js("otherClicks") as? Int == 0, "HAUST unrelated submit button not clicked")
+        try expect(try await js("JSON.stringify(observed)") as? String == "[\"dummy-user\",\"dummy-password\"]", "HAUST handler receives filled credentials")
+        try expect(try await fill() == "already-submitted", "HAUST duplicate submission blocked")
+        try expect(try await js("loginClicks") as? Int == 1, "HAUST no second handler call")
+        try await load(html: haust)
+        try expect(try await fill(submit: false) == "filled", "HAUST manual mode fills only")
+        try expect(try await js("loginClicks") as? Int == 0, "HAUST manual mode never clicks")
+        for state in ["disabled", "hidden"] {
+            try await load(html: haust)
+            try await js("document.getElementById('login-account').\(state)=true; true")
+            try expect(try await fill() == "missing-submit", "HAUST unavailable button is not clicked")
+            try expect(try await js("loginClicks+otherClicks") as? Int == 0, "HAUST unavailable button never falls through")
+        }
+        try await load(html: haust)
+        try await js("window.checkForm=undefined; true")
+        try expect(try await fill() == "waiting-ready", "HAUST waits for school handler")
+        try expect(try await js("loginClicks+otherClicks") as? Int == 0, "HAUST late handler does not trigger another control")
+        try await js("window.checkForm=function(){loginClicks++}; true")
+        try expect(try await fill() == "submitted", "HAUST late handler recovers")
+        try await load(html: haust)
+        try expect(try await fill(origin: "http://foreign.test") == "wrong-origin", "HAUST origin guard remains")
+        try expect(try await js("document.querySelector('[name=password]').value") as? String == "", "HAUST wrong origin receives no password")
         let serviceForm = "<form><input name='username'><input type='password'><button type='button' onclick='window.clicks++'>登录</button></form><script>window.clicks=0</script>"
         try await load(html: serviceForm)
         try expect(try await js("void 0") is NSNull, "undefined JavaScript statements bridge safely")
@@ -329,6 +430,7 @@ import WebKit
         try await js("document.body.insertAdjacentHTML('beforeend', '<span id=terms role=checkbox aria-required=true aria-checked=false tabindex=0>同意协议</span>');document.getElementById('terms').onclick=function(){this.setAttribute('aria-checked','true')};true")
         try expect(try await pump() == "submitted", "ARIA checkbox handled natively")
         try expect(try await js("document.getElementById('terms').getAttribute('aria-checked')") as? String == "true", "ARIA terms confirmed")
+        try await accountPortalChecks()
         print("PASS: \(checks) native WKWebView checks (first click, handler readiness, asynchronous handoff, deduplication, manual mode, origin and service selection).")
     }
 }

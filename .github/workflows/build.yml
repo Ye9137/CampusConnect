@@ -14,6 +14,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test core and browser script
         run: zsh macOS/test.sh
+      - name: Install offline account portal test dependency
+        run: npm install --no-save --prefix Windows/tests jquery@3.7.1
       - name: Test native WKWebView first submission
         run: zsh macOS/test-frames.sh
       - name: Test native portal error notices
@@ -57,11 +59,11 @@ jobs:
       - name: Test desktop pages
         shell: pwsh
         run: |
-          npm install --no-save --prefix Windows/tests playwright@1.58.2
+          npm install --no-save --prefix Windows/tests playwright@1.58.2 jquery@3.7.1
           if ($LASTEXITCODE -ne 0) { throw 'Playwright installation failed.' }
           npx --prefix Windows/tests playwright install chromium
           if ($LASTEXITCODE -ne 0) { throw 'Chromium installation failed.' }
-          foreach ($test in @('frames', 'desktop', 'wired', 'mode-profiles', 'agreements', 'recovery', 'eportal', 'portal-early', 'performance', 'flicker', 'operator-collapse', 'service-guide', 'redirect', 'captcha', 'sso-captcha', 'zportal')) {
+          foreach ($test in @('frames', 'desktop', 'wired', 'mode-profiles', 'agreements', 'recovery', 'eportal', 'portal-early', 'performance', 'flicker', 'operator-collapse', 'service-guide', 'redirect', 'captcha', 'sso-captcha', 'zportal', 'haust', 'haust-account')) {
             node "Windows/tests/$test.test.cjs"
             if ($LASTEXITCODE -ne 0) { throw "$test tests failed." }
           }

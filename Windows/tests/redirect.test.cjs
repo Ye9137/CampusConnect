@@ -28,6 +28,7 @@ const landingBootstrap=bootstrap.replace('/*CAMPUS_ORIGIN*/',JSON.stringify('htt
   if(url.pathname==='/landing')return html(`<script>location.replace(${JSON.stringify(data.finalUrl)})</script>`);
   if(url.pathname==='/spinner')return html('正在跳转…');
   if(url.pathname==='/zportal')return html(fs.readFileSync(path.join(__dirname,'fixtures/zportal-login.html'),'utf8'));
+  if(url.pathname==='/haust')return html(fs.readFileSync(path.join(__dirname,'fixtures/haust-login.html'),'utf8'));
   return html(`<input name=username><input type=password><button type=button id=login onclick="window.clicks=(window.clicks||0)+1">连接</button>`);
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -60,6 +61,10 @@ const landingBootstrap=bootstrap.replace('/*CAMPUS_ORIGIN*/',JSON.stringify('htt
   assert.equal(await page.evaluate(data.probe),true,'native preflight preserves zPortal hidden-password support');
   assert.equal(await page.evaluate(data.fill),'submitted');
   assert.deepEqual(await page.evaluate(()=>[loginClicks,qrClicks]),[1,0],'redirect flow preserves school password reveal and excludes QR login');
+  await page.goto('http://10.129.1.1/haust');
+  assert.equal(await page.evaluate(data.probe),true,'redirected HAUST form recognized');
+  assert.equal(await page.evaluate(data.fill),'submitted');
+  assert.deepEqual(await page.evaluate(()=>[loginClicks,otherClicks,observed]),[1,0,['fixture-user','fixture-password']],'redirected HAUST button calls original checkForm');
   await page.goto('http://other.test/login');
   assert.equal(await page.evaluate(data.probe),false);
   assert.equal(await page.evaluate(data.fill),'wrong-origin','pinning preserves foreign-page denial');

@@ -8,6 +8,23 @@ import JavaScriptCore
         if !condition() { fputs("FAIL: \(message)\n", stderr); exit(1) }
     }
     static func main() throws {
+        var redirectEntry = CampusProfile()
+        redirectEntry.portalURL = "http://1.1.1.1"; redirectEntry.username = "fixture-user"
+        let redirected = try PortalScript.atCurrentPage(profile: redirectEntry,
+            url: URL(string: "https://aaa.school.test:8443/tpl/login_account.html?session=fixture")!)
+        expect(redirected.portalURL.hasSuffix(":8443/tpl/login_account.html?session=fixture"), "redirect retains actual port, path and query")
+        expect(redirected.username == redirectEntry.username && redirectEntry.portalURL == "http://1.1.1.1", "redirect keeps account and saved entry unchanged")
+        let redirectProbe = try PortalScript.loginFormProbe(profile: redirected)
+        expect(!redirectProbe.contains("fixture-user"), "landing-page probe never contains saved account")
+        expect(PortalFillRetry.shouldRetry(result: "wrong-origin", scriptFailed: false, attempt: 1), "navigation race rebinds to landing page instead of mismatch popup")
+        for bad in ["about:blank", "javascript:alert(1)", "file:///tmp/login", "https://user:pass@school.test/"] {
+            do { _ = try PortalScript.atCurrentPage(profile: redirectEntry, url: URL(string: bad)!); expect(false, "invalid landing rejected") }
+            catch { expect(true, "invalid landing rejected") }
+        }
+        expect(PortalProblem.isAuthenticationRejected("authentication-rejected:E20027"), "school error code is treated as rejection")
+        expect(PortalProblem.authenticationMessage("authentication-rejected:E20027").contains("E20027"), "known format error identifier is retained")
+        expect(!PortalProblem.authenticationMessage("authentication-rejected:dummy-password").contains("dummy-password"), "untrusted message is excluded")
+        expect(!PortalProblem.authenticationMessage("authentication-rejected:E20027\n").contains("E20027"), "invalid error identifiers are excluded")
         var noticeGate = PortalProblemGate()
         for code in ["service-control-missing", "service-option-missing", "service-selection-failed"] {
             var guideGate = PortalProblemGate()

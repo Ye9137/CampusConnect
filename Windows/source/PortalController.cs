@@ -88,7 +88,7 @@ internal sealed class PortalController
             if (IsActive && profile is not null && redirectSession is not null) {
                 var decision = redirectSession.Navigate(e.Uri, e.IsUserInitiated, e.IsRedirected, DateTimeOffset.UtcNow);
                 if (decision is PortalNavigationDecision.Allowed or PortalNavigationDecision.Redirected) {
-                    profile = profile with { PortalUrl = redirectSession.CurrentUrl };
+                    profile = PortalScript.AtCurrentPage(profile, redirectSession.CurrentUrl);
                     if (decision == PortalNavigationDecision.Redirected)
                         Status?.Invoke("正在跟随校园认证入口跳转…");
                 } else {
@@ -261,9 +261,12 @@ internal sealed class PortalController
                 }
                 if (expected != generation || authenticationDeadline == null) return;
                 if (result == "authenticated") { ConfirmAuthentication(); return; }
-                if (result == "authentication-rejected") {
+                if (PortalProblem.IsAuthenticationRejected(result)) {
                     authenticationDeadline = null; RequiresInteraction = true;
-                    Fail("authentication-rejected", "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"); return;
+                    Fail("authentication-rejected", PortalProblem.AuthenticationMessage(result)); return;
+                }
+                if (result == "submission-unconfirmed") {
+                    Fail("submission-unconfirmed", "学校认证请求未完成，请查看页面提示后重新认证。"); return;
                 }
                 if (DateTimeOffset.UtcNow >= deadline) {
                     authenticationDeadline = null; RequiresInteraction = true;
@@ -373,8 +376,10 @@ internal sealed class PortalController
             if (expected != generation || finished || View.IsDisposed) return;
             if (!connected) { Stop(); Status?.Invoke("校园网已断开，停止自动填写。"); return; }
             if (CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(profile.PortalUrl)) {
-                RequiresInteraction = true; finished = true; password = "";
-                Fail("wrong-origin", "当前页面不属于本次认证跳转，已暂停自动重试，请确认学校地址。"); return;
+                // The document can commit before the navigation callback updates
+                // the active URL. Wait for that callback instead of clearing secrets.
+                if (attempt < 80) { await Task.Delay(150); continue; }
+                Fail("waiting-ready", "认证跳转尚未完成，请等待页面加载后重新认证。"); return;
             }
             if (discovering) { RequiresInteraction = true; Status?.Invoke("已打开探测到的页面，请确认属于学校后使用当前地址。"); return; }
             if (profile.Username.Length == 0 || password.Length == 0) {
@@ -398,9 +403,9 @@ internal sealed class PortalController
                 case "captcha-required": await HandleCaptchaAsync(expected); return;
                 case "authenticated":
                     ConfirmAuthentication(); return;
-                case "authentication-rejected":
+                case var rejected when PortalProblem.IsAuthenticationRejected(rejected):
                     RequiresInteraction = true; finished = true; password = "";
-                    Fail("authentication-rejected", "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"); return;
+                    Fail("authentication-rejected", PortalProblem.AuthenticationMessage(result)); return;
                 case "submitted": case "already-submitted":
                     finished = true; password = ""; RequiresInteraction = true;
                     authenticationDeadline = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -436,7 +441,8 @@ internal sealed class PortalController
                 case "manual-required": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校要求验证码或运营商信息，请在认证页补充。"); _ = WatchForCaptchaAsync(expected); return;
                 case "waiting-ready": RequiresInteraction = true; finished = true; password = ""; Fail("waiting-ready", "学校认证参数尚未就绪，请检查页面后重试。"); return;
                 case "invalid-selector": RequiresInteraction = true; Fail("missing-fields", "认证页面暂时无法识别，请在网页中手动登录。"); return;
-                case "wrong-origin": RequiresInteraction = true; Fail("wrong-origin", "认证地址不匹配，已阻止填写。"); return;
+                case "wrong-origin" when attempt < 80: await Task.Delay(150); continue;
+                case "wrong-origin": RequiresInteraction = true; Fail("waiting-ready", "认证页面仍在跳转，请等待页面加载后重新认证。"); return;
                 default: RequiresInteraction = true; Fail("missing-fields", "未识别登录表单，请在网页中手动登录。"); return;
             }
         }

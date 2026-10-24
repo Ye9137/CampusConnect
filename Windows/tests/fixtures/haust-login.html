@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body>
+<!-- Only this button's HTML was supplied by the user; surrounding form is synthetic. -->
+<form id="account-form">
+  <input name="account" type="text"><input name="password" type="password">
+  <button type="button" onclick="otherClicks++">修改/忘记密码</button>
+  <button type="button" class="login" onclick="checkForm()" id="login-account">立即登录</button>
+  <button type="submit" onclick="event.preventDefault();otherClicks++">二维码登录</button>
+</form>
+<script>
+window.loginClicks=0;window.otherClicks=0;window.observed=null;
+function checkForm(){
+  loginClicks++;
+  observed=[document.querySelector('[name=account]').value,document.querySelector('[name=password]').value];
+}
+</script></body></html>

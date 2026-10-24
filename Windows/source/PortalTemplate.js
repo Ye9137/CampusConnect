@@ -13,7 +13,8 @@
       ['userName','userIp','deviceIp'].every(name => form.querySelector('input[type="hidden"][name="'+name+'"]'));
   })();
   if (successPage || zportalSuccess || outcome === 'success') return 'authenticated';
-  if (outcome === 'fail') return 'authentication-rejected';
+  if (outcome === 'fail') return 'authentication-rejected' + (window.__campusSubmitAttempt?.failureCode ? ':' + window.__campusSubmitAttempt.failureCode : '');
+  if (outcome === 'request-error') return 'submission-unconfirmed';
   if (cfg.statusOnly) return window.__campusSubmitted ? 'awaiting-authentication' : 'not-submitted';
   const pending = cfg.confirmSubmit && window.__campusSubmitAttempt;
   if (pending && pending.failed) return 'submission-unconfirmed';
@@ -27,7 +28,7 @@
   if (ready && (ready.failed || !ready.pageInfo || !ready.getServices)) return 'waiting-ready';
   const visible = e => e && !e.disabled && e.getClientRects().length > 0;
   const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
-  let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton;
+  let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton, accountButton;
   const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
     input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
   const available = input => editable(input) && (visible(input) ||
@@ -73,11 +74,17 @@
       [...root.querySelectorAll('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')]
       .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
     if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
-    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton || zportalButton ||
+    // User-inspected HAUST account button; preserve its own checkForm handler.
+    const accountCandidate = root.querySelector('button#login-account[type="button"]');
+    accountButton = accountCandidate &&
+      /^\s*checkForm\s*\(\s*\)\s*;?\s*$/.test(accountCandidate.getAttribute('onclick') || '') &&
+      (accountCandidate.textContent || '').trim() === '立即登录' ? accountCandidate : null;
+    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton || zportalButton || accountButton ||
       [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
         .find(e => e.type === 'submit' || /^(登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim()));
   } catch (_) { return 'invalid-selector'; }
   if (!available(user) || !available(pass)) return 'missing-fields';
+  /*CAMPUS_ACCOUNT*/
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
   for (const [input, value] of [[user,cfg.username],[pass,cfg.password]]) {
     if (input === portalPass && portalButton?.id === 'login_btn' && visible(tipFor(input))) tipFor(input).click();
@@ -250,6 +257,7 @@
   /*CAMPUS_CAPTCHA*/
   if (!cfg.submit) return 'filled';
   if (!visible(submit)) return 'missing-submit';
+  if (submit === accountButton && typeof window.checkForm !== 'function') return 'waiting-ready';
   if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
       typeof window.doauthen !== 'function') return 'waiting-ready';
   // Captchas and extra operator fields need the user's input; don't burn a login attempt.
@@ -313,5 +321,9 @@
   }
   window.__campusSubmitted = true;
   submit.click();
+  if (submit === accountButton && window.__campusSubmitAttempt?.accountObserved && !window.__campusSubmitAttempt.accountRequestStarted) {
+    window.__campusSubmitAttempt.failed = true;
+    return 'submission-unconfirmed';
+  }
   return 'submitted';
 })()

@@ -4,7 +4,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const bootstrap = fs.readFileSync(path.join(__dirname, '../../macOS/source/PortalBootstrap.js'), 'utf8')
   .replace('/*CAMPUS_ORIGIN*/', JSON.stringify('http://portal.test'));
-const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8');
+const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd());
 const script = extra => template.replace('/*CAMPUS_CONFIG*/', JSON.stringify({origin:'http://portal.test', username:'fixture-user', password:'fixture-password', submit:false, ...extra}));
 // Synthetic reproduction of an operator popup covering the connection button.
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/operator-popup.html'), 'utf8');

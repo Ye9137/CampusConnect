@@ -10,6 +10,10 @@ void Invalid(CampusProfile profile) {
     throw new Exception("Invalid profile accepted.");
 }
 PortalRedirectTests.Run(Expect);
+Expect(PortalProblem.IsAuthenticationRejected("authentication-rejected:E20027"), "school error identifier is a rejection");
+Expect(PortalProblem.AuthenticationMessage("authentication-rejected:E20027").Contains("E20027"), "school error identifier remains visible");
+Expect(!PortalProblem.AuthenticationMessage("authentication-rejected:dummy-password").Contains("dummy-password"), "untrusted message is excluded");
+Expect(!PortalProblem.AuthenticationMessage("authentication-rejected:E20027\n").Contains("E20027"), "invalid error identifier is excluded");
 var noticeGate = new PortalProblemGate();
 foreach (var code in new[] { "service-control-missing", "service-option-missing", "service-selection-failed" }) {
     var guideGate = new PortalProblemGate();

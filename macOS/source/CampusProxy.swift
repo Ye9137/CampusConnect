@@ -9,10 +9,20 @@ final class CampusProxy {
     private var listener: NWListener?
     private var pipes: [UUID: CampusPipe] = [:]
     private var generation = 0
+    private var approvedHosts: Set<String> = []
+
+    // Admit only main-document destinations observed by the native WebView.
+    func allowNavigation(host: String, completion: @escaping () -> Void) {
+        queue.async { [self] in
+            approvedHosts.insert(host.lowercased())
+            DispatchQueue.main.async(execute: completion)
+        }
+    }
 
     func start(host: String, additionalHosts: Set<String> = [], interfaceType: NWInterface.InterfaceType = .wifi, requiredInterface: NWInterface? = nil, completion: @escaping (Result<UInt16, Error>) -> Void) {
         queue.async { [self] in
             self.stopOnQueue()
+            self.approvedHosts = Set(additionalHosts.map { $0.lowercased() }).union([host.lowercased()])
             let expected = self.generation
             do {
                 let parameters = NWParameters.tcp
@@ -33,8 +43,7 @@ final class CampusProxy {
                 listener.newConnectionHandler = { [weak self] connection in
                     guard let self, expected == self.generation else { connection.cancel(); return }
                     let id = UUID()
-                    let hosts = Set(additionalHosts.map { $0.lowercased() }).union([host.lowercased()])
-                    let pipe = CampusPipe(client: connection, allowedHosts: hosts, interfaceType: interfaceType, requiredInterface: requiredInterface, queue: self.queue) { [weak self] in self?.pipes.removeValue(forKey: id) }
+                    let pipe = CampusPipe(client: connection, allowsHost: { [weak self] in self?.approvedHosts.contains($0) == true }, interfaceType: interfaceType, requiredInterface: requiredInterface, queue: self.queue) { [weak self] in self?.pipes.removeValue(forKey: id) }
                     self.pipes[id] = pipe
                     pipe.start()
                 }
@@ -50,6 +59,7 @@ final class CampusProxy {
     func stop() { queue.async { self.stopOnQueue() } }
     private func stopOnQueue() {
         generation += 1
+        approvedHosts.removeAll()
         listener?.stateUpdateHandler = nil; listener?.newConnectionHandler = nil
         listener?.cancel(); listener = nil
         let old = Array(pipes.values); pipes.removeAll()
@@ -59,7 +69,7 @@ final class CampusProxy {
 
 private final class CampusPipe {
     let client: NWConnection
-    let allowedHosts: Set<String>
+    let allowsHost: (String) -> Bool
     let interfaceType: NWInterface.InterfaceType
     let requiredInterface: NWInterface?
     let queue: DispatchQueue
@@ -67,8 +77,8 @@ private final class CampusPipe {
     var upstream: NWConnection?
     var header = Data()
     var closed = false
-    init(client: NWConnection, allowedHosts: Set<String>, interfaceType: NWInterface.InterfaceType, requiredInterface: NWInterface?, queue: DispatchQueue, onClose: @escaping () -> Void) {
-        self.client = client; self.allowedHosts = allowedHosts; self.interfaceType = interfaceType; self.requiredInterface = requiredInterface; self.queue = queue; self.onClose = onClose
+    init(client: NWConnection, allowsHost: @escaping (String) -> Bool, interfaceType: NWInterface.InterfaceType, requiredInterface: NWInterface?, queue: DispatchQueue, onClose: @escaping () -> Void) {
+        self.client = client; self.allowsHost = allowsHost; self.interfaceType = interfaceType; self.requiredInterface = requiredInterface; self.queue = queue; self.onClose = onClose
     }
     func start() {
         client.stateUpdateHandler = { [weak self] state in
@@ -104,7 +114,7 @@ private final class CampusPipe {
         guard parts.count == 3 else { reject(); return }
         let tunnel = parts[0] == "CONNECT"
         let target = tunnel ? URL(string: "http://" + parts[1]) : URL(string: parts[1])
-        guard let target, let host = target.host?.lowercased(), allowedHosts.contains(host),
+        guard let target, let host = target.host?.lowercased(), allowsHost(host),
               target.user == nil, target.password == nil else { reject(); return }
         let port = target.port ?? (target.scheme == "https" ? 443 : 80)
         guard port > 0, port <= 65535 else { reject(); return }

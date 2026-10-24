@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8');
+const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd());
 const agreements = fs.readFileSync(path.join(__dirname, '../source/PortalAgreements.js'), 'utf8');
 const cfg = { origin: 'http://portal.test', username: 'test-user', password: 'dummy-password',
   userSelector: '', passwordSelector: '', submitSelector: '', submit: true };

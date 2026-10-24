@@ -17,8 +17,8 @@ internal static class PortalRedirectTests
         expect(landing.PortalUrl.EndsWith("?ac_id=fixture"), "in-memory destination keeps school query parameters");
         session.Pin();
         expect(session.Navigate("http://10.129.1.1/success", false, true, now.AddMinutes(1)) == PortalNavigationDecision.Allowed, "pinned school success path remains allowed");
-        expect(session.Navigate("http://unrelated.test/login", false, true, now) == PortalNavigationDecision.External, "post-fill redirect cannot gain credential access");
-        expect(session.Blocked, "external navigation latches blocked state");
+        expect(session.Navigate("https://school-sso.test/login", false, true, now) == PortalNavigationDecision.Redirected, "school SSO redirect follows a previously detected form");
+        expect(!session.Blocked, "automatic login redirects do not trigger target mismatch");
         return landing;
     }
 
@@ -26,6 +26,13 @@ internal static class PortalRedirectTests
     {
         var now = DateTimeOffset.UtcNow;
         var landing = LandingProfile(expect);
+        var rebound = PortalScript.AtCurrentPage(landing, "https://aaa.school.test:8443/tpl/login_account.html?session=fixture");
+        expect(rebound.PortalUrl.Contains(":8443/") && rebound.PortalUrl.EndsWith("session=fixture"), "landing profile retains HTTPS port, path and dynamic school query");
+        expect(rebound.Username == landing.Username && landing.PortalUrl != rebound.PortalUrl, "landing profile retains account without replacing saved entry");
+        foreach (var bad in new[] { "about:blank", "javascript:alert(1)", "file:///tmp/login", "https://user:pass@school.test/" }) {
+            try { PortalScript.AtCurrentPage(landing, bad); expect(false, "invalid landing rejected"); }
+            catch (InvalidOperationException) { expect(true, "invalid landing rejected"); }
+        }
         var probe = PortalScript.LoginFormProbe(landing);
         expect(!probe.Contains("fixture-user") && !probe.Contains("fixture-password"), "form probe contains no saved credentials");
         var loop = new PortalRedirectSession("http://1.1.1.1", now);
@@ -39,8 +46,8 @@ internal static class PortalRedirectTests
         var timed = new PortalRedirectSession("http://1.1.1.1", now);
         expect(timed.Navigate("http://10.129.1.1/login", false, true, now.AddSeconds(31)) == PortalNavigationDecision.Expired, "initial redirect window is bounded");
         var click = new PortalRedirectSession("http://1.1.1.1", now);
-        expect(click.Navigate("http://other.test/login", true, false, now) == PortalNavigationDecision.External, "user-clicked external page not silently trusted");
-        expect(click.CurrentUrl == "http://1.1.1.1", "blocked destination never replaces active URL");
+        expect(click.Navigate("http://school-login.test/login", true, false, now) == PortalNavigationDecision.Redirected, "login link within authentication view can change destination");
+        expect(click.CurrentUrl == "http://school-login.test/login", "actual login destination replaces only the attempt URL");
         var server = new PortalRedirectSession("http://1.1.1.1", now);
         expect(server.Navigate("https://school.test/login", true, true, now) == PortalNavigationDecision.Redirected, "HTTP redirect retains original user gesture without being blocked");
         var downgrade = new PortalRedirectSession("https://school.test", now);

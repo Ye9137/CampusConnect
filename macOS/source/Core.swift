@@ -19,6 +19,17 @@ struct PortalProblem: Identifiable, Equatable {
             "点击“保存设置”，再返回“上网认证”点击“立即认证”。若仍无法匹配，可先在学校网页手动选择并登录，再通过左下角入口反馈。"
         ] : [advice, "打开对应设置，核对认证地址以及账号输入位置。未识别到输入框不代表账号或密码错误；若网页是二维码模式，请先切换到账号密码登录。", "保存修改后返回上网认证，点击“立即认证”重试；也可在学校网页中手动登录。"]
     }
+    static func isAuthenticationRejected(_ status: String?) -> Bool {
+        status == "authentication-rejected" || status?.hasPrefix("authentication-rejected:") == true
+    }
+    static func authenticationMessage(_ status: String?) -> String {
+        let prefix = "authentication-rejected:"
+        let code = status?.hasPrefix(prefix) == true ? String(status!.dropFirst(prefix.count)) : ""
+        if code.range(of: "^E[0-9]{4,8}$", options: .regularExpression) != nil && !code.contains("\n") {
+            return "学校返回 \(code)，已暂停自动重试。请查看学校网页提示后处理；此代码尚无已核实的含义。"
+        }
+        return "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。"
+    }
     static func serviceCode(_ reason: String?) -> String {
         ["service-control-missing", "service-option-missing", "service-selection-failed"].contains(reason ?? "") ? reason! : "missing-service"
     }
@@ -289,11 +300,30 @@ enum PortalFillRetry {
     static let delay: TimeInterval = 0.15
     static func shouldRetry(result: String?, scriptFailed: Bool, attempt: Int) -> Bool {
         if !scriptFailed && result == "missing-service" { return attempt < 80 }
-        return attempt < maxAttempts && (scriptFailed || ["waiting-ready", "waiting-submit", "waiting-agreement", "missing-fields", "missing-submit", "missing-service"].contains(result ?? ""))
+        return attempt < maxAttempts && (scriptFailed || ["waiting-ready", "waiting-submit", "waiting-agreement", "wrong-origin", "missing-fields", "missing-submit", "missing-service"].contains(result ?? ""))
     }
 }
 
 enum PortalScript {
+    static func atCurrentPage(profile: CampusProfile, url: URL) throws -> CampusProfile {
+        guard origin(url) != nil, url.user == nil, url.password == nil else {
+            throw AppError.message("当前页面不是有效的 HTTP/HTTPS 认证页。")
+        }
+        var result = profile
+        result.portalURL = url.absoluteString
+        return result
+    }
+    static func loginFormProbe(profile: CampusProfile) throws -> String {
+        try inContext(#"""
+        (() => {
+          if (document.readyState === 'loading') return false;
+          return [...document.querySelectorAll('input[type="password"]')].some(input =>
+            input instanceof HTMLInputElement && !input.disabled && !input.readOnly &&
+            (input.getClientRects().length > 0 || (input.id === 'pwd' &&
+              (document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1'))?.getClientRects().length > 0)));
+        })()
+        """#, profile: profile)
+    }
     static func serviceFailure(profile: CampusProfile) throws -> String {
         try inContext("window.__campusServiceFailure || 'missing-service'", profile: profile)
     }
@@ -375,7 +405,8 @@ enum PortalScript {
           const successPage = location.pathname === '/eportal/success.jsp' &&
             !!new URLSearchParams(location.search).get('userIndex');
           if (successPage || outcome === 'success') return 'authenticated';
-          if (outcome === 'fail') return 'authentication-rejected';
+          if (outcome === 'fail') return 'authentication-rejected' + (window.__campusSubmitAttempt?.failureCode ? ':' + window.__campusSubmitAttempt.failureCode : '');
+          if (outcome === 'request-error') return 'submission-unconfirmed';
           if (cfg.statusOnly) return window.__campusSubmitted ? 'awaiting-authentication' : 'not-submitted';
           const pending = cfg.confirmSubmit && window.__campusSubmitAttempt;
           if (pending && pending.failed) return 'submission-unconfirmed';
@@ -389,7 +420,7 @@ enum PortalScript {
           if (ready && (ready.failed || !ready.pageInfo || !ready.getServices)) return 'waiting-ready';
           const visible = e => e && !e.disabled && e.getClientRects().length > 0;
           const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
-          let user, pass, submit, portalUser, portalPass, portalButton;
+          let user, pass, submit, portalUser, portalPass, portalButton, accountButton;
           const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
             input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : null;
           const available = input => editable(input) && (visible(input) ||
@@ -425,11 +456,17 @@ enum PortalScript {
               [...root.querySelectorAll('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')]
               .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
             if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
-            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton ||
+            // User-inspected HAUST account button; preserve its own checkForm handler.
+            const accountCandidate = root.querySelector('button#login-account[type="button"]');
+            accountButton = accountCandidate &&
+              /^\\s*checkForm\\s*\\(\\s*\\)\\s*;?\\s*$/.test(accountCandidate.getAttribute('onclick') || '') &&
+              (accountCandidate.textContent || '').trim() === '立即登录' ? accountCandidate : null;
+            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton || accountButton ||
               [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(visible)
                 .find(e => e.type === 'submit' || /^(登录|登陆|认证|连接|login|log in|sign in|connect)(\\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim()));
           } catch (_) { return 'invalid-selector'; }
           if (!available(user) || !available(pass)) return 'missing-fields';
+          /*CAMPUS_ACCOUNT*/
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
           for (const [input, value] of [[user,cfg.username],[pass,cfg.password]]) {
             if (input === portalPass && portalButton?.id === 'login_btn' && visible(tipFor(input))) tipFor(input).click();
@@ -592,6 +629,7 @@ enum PortalScript {
               (!unionCode.value.trim() || unionCode.value.trim() === '请输入验证码')) return 'manual-required';
           if (!cfg.submit) return 'filled';
           if (!visible(submit)) return 'missing-submit';
+          if (submit === accountButton && typeof window.checkForm !== 'function') return 'waiting-ready';
           if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
               typeof window.doauthen !== 'function') return 'waiting-ready';
           // Leave visible CAPTCHA fields to the school page so letters and case are preserved.
@@ -664,11 +702,78 @@ enum PortalScript {
           }
           window.__campusSubmitted = true;
           submit.click();
+          if (submit === accountButton && window.__campusSubmitAttempt?.accountObserved && !window.__campusSubmitAttempt.accountRequestStarted) {
+            window.__campusSubmitAttempt.failed = true;
+            return 'submission-unconfirmed';
+          }
           return 'submitted';
         })()
         """.replacingOccurrences(of: "  /*CAMPUS_AGREEMENTS*/", with: agreementScript)
+            .replacingOccurrences(of: "  /*CAMPUS_ACCOUNT*/", with: accountScript)
         return try inContext(script, profile: profile)
     }
+    static let accountScript = #"""
+      // The supplied account portal loads its password rules asynchronously.
+      // Observe its original jQuery requests; never replace validation or submit APIs.
+      const accountStatus = (() => {
+        if (!cfg.submit || !accountButton || user.id !== 'username' || pass.id !== 'password' || pass.form?.id !== 'my-form') return null;
+        const jq = window.jQuery;
+        if (typeof passwordRuleScope !== 'object' || passwordRuleScope === null ||
+            !['0','1',0,1].includes(passwordRuleScope.portal_auth) ||
+            (passwordRuleScope.portal_auth == '1' && (typeof passwordConfig !== 'object' || passwordConfig === null)) ||
+            typeof postData !== 'object' || postData === null || typeof host_url !== 'string' ||
+            typeof window.doAuthCheck !== 'function' || typeof window.doPortalLogin !== 'function' ||
+            typeof jq?.fn?.on !== 'function') return 'waiting-ready';
+        const params = new URLSearchParams(location.search);
+        if (((params.get('wlanuserip') || params.get('ip')) && !postData.userIpv4) ||
+            (params.get('mac') && !postData.userMac)) return 'waiting-ready';
+        const state = window.__campusSubmitAttempt ||= {};
+        if (state.accountObserved) return null;
+        const endpoint = value => {
+          if (typeof value !== 'string' || !value) return null;
+          try { const url = new URL(value, location.href); url.hash = ''; return url.href; } catch (_) { return null; }
+        };
+        const stages = new Map();
+        for (const [stage, value] of [['password-check', host_url + '/account/check'], ['portal-login', host_url + '/account/login'],
+            ['auth-sync', window.dxzAuthApiUrl], ['auth-check', window.dxzCheckApiUrl]]) {
+          const url = endpoint(value);
+          if (url) stages.set(url, stage);
+        }
+        const requests = new WeakMap();
+        jq(document).on('ajaxSend.campusAccount', (_event, xhr, settings) => {
+          if (!window.__campusSubmitted || String(settings.type).toUpperCase() !== 'POST') return;
+          const stage = stages.get(endpoint(settings.url));
+          if (!stage) return;
+          requests.set(xhr, stage); state.accountRequestStarted = true;
+          state.result = null; state.failureCode = ''; state.accountStage = stage;
+        });
+        jq(document).on('ajaxComplete.campusAccount', (_event, xhr) => {
+          const stage = requests.get(xhr);
+          if (!stage) return;
+          requests.delete(xhr);
+          if (xhr.status < 200 || xhr.status >= 300) {
+            // Optional prechecks deliberately fall through on network errors.
+            if (stage === 'password-check' || stage === 'portal-login') state.result = 'request-error';
+            return;
+          }
+          let result = xhr.responseJSON;
+          if (!result) { try { result = JSON.parse(xhr.responseText); } catch (_) { return; } }
+          if (!result || typeof result !== 'object') return;
+          if (stage === 'portal-login' && result.code === 0) { state.result = 'success'; return; }
+          if (stage === 'portal-login' && result.code === 2) { state.result = 'captcha'; return; }
+          const rejected = stage === 'portal-login' ? result.code === 1 || (result.code !== 0 && result.code !== 2 && !!result.msg) :
+            stage === 'password-check' ? result.code === 1 : result.code !== 1 && result.code !== -1 && !!result.msg;
+          if (rejected) {
+            state.result = 'fail'; state.accountStage = stage;
+            // Retain only a bounded error identifier, never response text or credentials.
+            state.failureCode = typeof result.msg === 'string' ? result.msg.match(/\bE[0-9]{4,8}\b/)?.[0] || '' : '';
+          }
+        });
+        state.accountObserved = true;
+        return null;
+      })();
+      if (accountStatus) return accountStatus;
+    """#
     static let agreementScript = #"""
       // Activate required login checkboxes through school handlers.
       // The caller has already checked network/origin and identified the login inputs.

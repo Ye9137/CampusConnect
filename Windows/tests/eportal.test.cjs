@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8').replace(/\r\n/g, '\n');
+const template = fs.readFileSync(path.join(__dirname, '../source/PortalTemplate.js'), 'utf8').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd()).replace(/\r\n/g, '\n');
 // Windows portal behavior is maintained and packaged independently of macOS.
 const cfg = {origin:'http://portal.test', username:'test-account\'"', password:'test-password\'"',
   userSelector:'', passwordSelector:'', submitSelector:'', submit:true};

@@ -13,6 +13,15 @@ internal sealed record PortalProblem(string Code, string Title, string Summary, 
         "点击“打开对应设置”定位到运营商输入框，按网页实际情况清空或修改。这里不会自动删除你的填写内容。",
         "点击“保存设置”，再返回“上网认证”点击“立即认证”。若仍无法匹配，可先在学校网页手动选择并登录，再通过左下角入口反馈。"
     ] : [Advice, "打开对应设置，核对认证地址以及账号输入位置。未识别到输入框不代表账号或密码错误；若网页是二维码模式，请先切换到账号密码登录。", "保存修改后返回上网认证，点击“立即认证”重试；也可在学校网页中手动登录。"];
+    public static bool IsAuthenticationRejected(string? status) => status == "authentication-rejected" || status?.StartsWith("authentication-rejected:", StringComparison.Ordinal) == true;
+    public static string AuthenticationMessage(string? status)
+    {
+        const string prefix = "authentication-rejected:";
+        var code = status?.StartsWith(prefix, StringComparison.Ordinal) == true ? status[prefix.Length..] : "";
+        return System.Text.RegularExpressions.Regex.IsMatch(code, @"\AE[0-9]{4,8}\z")
+            ? $"学校返回 {code}，已暂停自动重试。请查看学校网页提示后处理；此代码尚无已核实的含义。"
+            : "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。";
+    }
     public static string ServiceCode(string? reason) => reason is "service-control-missing" or "service-option-missing" or "service-selection-failed" ? reason : "missing-service";
     public static PortalProblem? From(string code) => code switch {
         "service-control-missing" => new(code, "网页未找到运营商 / 服务选项", "设置中填写了运营商 / 服务选项，但当前认证网页未识别到对应的选择控件，已暂停自动登录。", "网页没有需要选择的选项时，请清空设置中的运营商 / 服务选项；网页确有选项时，先等待加载或手动选择。"),
@@ -148,8 +157,10 @@ public sealed class PortalRecovery
 
 public enum PortalNavigationDecision { Allowed, Redirected, External, Invalid, Loop, Expired }
 
-// An entry URL is not necessarily the login origin. Follow only the initial
-// automatic navigation chain, then pin it before any saved credentials are used.
+// An entry URL is not necessarily the login origin. Follow the current auth
+// navigation chain, including login links opened in this view. Pinning identifies
+// a login document, but school
+// SSO may still redirect it to another host or port during the same attempt.
 // This state is per attempt; dynamic portal query strings are never saved.
 public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset started)
 {
@@ -164,10 +175,10 @@ public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset starte
         var origin = CampusProfile.Origin(url);
         if (origin is null) { Blocked = true; return PortalNavigationDecision.Invalid; }
         var sameOrigin = origin == CampusProfile.Origin(CurrentUrl);
-        if (Blocked || (!sameOrigin && (Pinned || (userInitiated && !redirected)))) {
+        if (Blocked) {
             Blocked = true; return PortalNavigationDecision.External;
         }
-        if (!Pinned) {
+        if (!Pinned || !sameOrigin) {
             if (now - started > TimeSpan.FromSeconds(30)) { Blocked = true; return PortalNavigationDecision.Expired; }
             var uri = new Uri(url);
             var key = uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
@@ -183,6 +194,11 @@ public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset starte
 
 public static class PortalScript
 {
+    public static CampusProfile AtCurrentPage(CampusProfile profile, string url)
+    {
+        if (CampusProfile.Origin(url) is null) throw new InvalidOperationException("当前页面不是有效的 HTTP/HTTPS 认证页。");
+        return profile with { PortalUrl = url };
+    }
     public static string ServiceFailure(CampusProfile profile) => InContext(profile, "window.__campusServiceFailure || 'missing-service'", "'missing-service'");
     public static string InContext(CampusProfile profile, string script, string fallback = "'missing-fields'")
     {
@@ -287,7 +303,11 @@ public static class PortalScript
         using var captchaStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalCaptcha.js")
             ?? throw new InvalidOperationException("缺少验证码辅助脚本。");
         using var captchaReader = new StreamReader(captchaStream);
+        using var accountStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalAccount.js")
+            ?? throw new InvalidOperationException("缺少账号认证脚本。");
+        using var accountReader = new StreamReader(accountStream);
         var script = reader.ReadToEnd().Replace("/*CAMPUS_CONFIG*/", payload, StringComparison.Ordinal)
+            .Replace("  /*CAMPUS_ACCOUNT*/", accountReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_CAPTCHA*/", captchaReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_AGREEMENTS*/", agreementReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
         return InContext(profile, script, "'wrong-origin'");

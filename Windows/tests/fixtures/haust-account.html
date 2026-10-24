@@ -1,0 +1,342 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body>
+<!-- Critical markup and complete account functions from the supplied page; offline endpoints and invented data. -->
+<form id="my-form"><input type="text" id="username" name="username"><input type="password" id="password" name="password">
+<select id="isp-select" hidden><option value="local">校园网</option></select><select id="time-select" hidden><option value="0">不设置</option></select>
+<div id="code" style="display:none"><input id="codeNumber" placeholder="验证码"><img id="codeImg"></div>
+<button type="button" onclick="checkForm()" id="login-account">立即登录</button></form><div id="details" hidden></div>
+<script src="/jquery.js"></script><script>
+var host_url='/api',passwordConfig,passwordRuleScope;
+var postData={username:'',password:'',switchip:'',nasId:0,userIpv4:'',userMac:'',captcha:'',captchaId:'',isp:'',timeLimit:''};
+var urlParams=Object.fromEntries(new URLSearchParams(location.search));
+postData.switchip=urlParams.switchip;postData.nasId=urlParams.nasId;
+postData.userIpv4=urlParams.wlanuserip||urlParams.ip;postData.userMac=urlParams.mac;
+let allowClick=true,isRequesting=false,loginAccount=$('#login-account');
+var notice_alert_after='',isp_option={},messages=[];
+function showMessage(msg){messages.push(msg)}
+function showAlertNotice(){} function formatSeconds(){return ''} function manyToOneProxy(){}
+function validatePassword(value){return {status:value!=='blocked-password',message:'本地密码校验失败'}}
+$.get(host_url+'/config',function(res){passwordConfig=res.data.password_config;passwordRuleScope=res.data.password_rule_scope});
+    function checkForm() {
+        if (!allowClick) {
+            return;
+        }
+
+        let username = $('#username').val().trim();
+        let password = $('#password').val().trim();
+        allowClick = false; // 禁用点击
+        isRequesting = true; // 设置请求标志
+        // 显示加载动画
+        loginAccount.text('登录中...').prop('disabled', true);
+
+        if (passwordRuleScope.portal_auth == '1') {
+            let resVali = validatePassword(password, passwordConfig)
+            if (!resVali.status) {
+                showMessage(resVali.message, 'error');
+                return;
+            }
+        }
+        // 你的表单验证和提交逻辑
+        if (!username || !password) {
+            showMessage('账号或密码不能为空!', 'warning');
+            return;
+        }
+
+        if (window.dxzRememberPasswordEnable) {
+            if ($("#remember").prop("checked")) {
+                var remember = $("#remember").prop("checked")
+                localStorage.setItem("username", username);
+                localStorage.setItem("password", password);
+                localStorage.setItem("remember", remember);
+            } else {
+                localStorage.removeItem("username");
+                localStorage.removeItem("password");
+            }
+        }
+
+        postData.username = username
+        postData.password = password
+        postData.captcha = $('#codeNumber').val()
+        postData.isp = $('#isp-select').val()
+        postData.timeLimit = $('#time-select').val()
+
+        //遍历提交数据 删除为空的数据
+        $.each(postData, function (item) {
+            if (postData[item] != undefined && postData[item].length === 0) {
+                delete postData[item]
+            }
+        })
+
+        // 认证前校验（小程序密码同步）
+        if (window.dxzAuthApiUrl) {
+            $.ajax({
+                url: window.dxzAuthApiUrl,
+                type: 'POST',
+                timeout: 1500,
+                data: {
+                    campusCode: window.dxzAuthSchoolCodes || window.dxzCampusCode || '',
+                    username: postData.username,
+                    password: postData.password
+                },
+                success: function (authRes) {
+                    if (authRes && authRes.code === 1) {
+                        doAuthCheck();
+                    } else if (authRes && authRes.code === -1) {
+                        doAuthCheck();
+                    } else if (authRes && authRes.msg) {
+                        allowClick = true;
+                        isRequesting = false;
+                        loginAccount.text('立即登录').prop('disabled', false);
+                        showMessage(authRes.msg, 'warning');
+                    } else {
+                        doAuthCheck();
+                    }
+                },
+                error: function () {
+                    doAuthCheck();
+                }
+            });
+        } else {
+            doAuthCheck();
+        }
+
+        return true;
+    }
+
+    function doAuthCheck() {
+        if (window.dxzCheckApiUrl) {
+            $.ajax({
+                url: window.dxzCheckApiUrl,
+                type: 'POST',
+                timeout: 1500,
+                data: {
+                    username: postData.username,
+                    password: postData.password
+                },
+                success: function (checkRes) {
+                    if (checkRes && checkRes.code === 1) {
+                        doPortalLogin();
+                    } else if (checkRes && checkRes.code === -1) {
+                        doPortalLogin();
+                    } else if (checkRes && checkRes.msg) {
+                        allowClick = true;
+                        isRequesting = false;
+                        loginAccount.text('立即登录').prop('disabled', false);
+                        showMessage(checkRes.msg, 'warning');
+                    } else {
+                        doPortalLogin();
+                    }
+                },
+                error: function () {
+                    doPortalLogin();
+                }
+            });
+        } else {
+            doPortalLogin();
+        }
+    }
+
+    function doPortalLogin() {
+        // 判断当前用户是否需要强制修改密码
+        $.post(host_url + '/account/check', postData, function (result) {
+            if (result.code === 0 && result.isChangePwd == 1) {
+                // 跳转到修改密码页面
+                window.location.href = "change_pwd.html?username=" + postData.username
+                return false
+            } else if (result.code === 1) {
+                showMessage(result.msg, 'warning');
+                return false
+            } else {
+                //$('#err').text('正在认证，请稍等...');
+                loginAccount.css('opacity', '0.5')
+                var interval; // 计时器
+                var resultCode = -1; // 认证状态
+                // 走正常portal流程
+                // 提交
+                $.post(host_url + '/account/login', postData, function (result) {
+                    resultCode = result.code;
+                    // code=0 认证成功 code=1 认证失败 code=2 需要验证码
+                    if (result.code === 0) {
+                        localStorage.setItem("isp", postData.isp);
+                        // 皮肤功能MAC绑定
+                        if (window.dxzBindApiUrl) {
+                            $.ajax({
+                                url: window.dxzBindApiUrl,
+                                type: 'POST',
+                                data: {
+                                    mac: postData.userMac || '',
+                                    skinType: window.dxzIsMobile ? '1' : '2',
+                                    fullAccount: postData.username || '',
+                                    campusCode: window.dxzCampusCode || ''
+                                },
+                                success: function () {
+                                },
+                                error: function () {
+                                }
+                            });
+                        }
+
+                        // 判断是否配置登录成功后的跳转页面
+                        if (window.portalLoginedJumpTo) {
+                            console.log('已登录跳转到：', window.portalLoginedJumpTo);
+                            window.location.href = window.portalLoginedJumpTo;
+                            return;
+                        }
+
+                        // $("#err").text('登录成功')
+                        $('#messageBox').fadeOut();
+                        // setTimeout(function () {//黑衣探花定时器
+                        //     $("#err").text('')
+                        // }, 3000);//设置5000毫秒即5秒
+                        $('#my-form').css('display', 'none')
+                        $('#dxzQuickPanel').css('display', 'none')
+                        $('.dxz-tabs').css('display', 'none')
+                        $('#dxzTabBubble').css('display', 'none')
+                        $('#dxzBubble').hide()
+                        $('#details').css('display', 'block')
+                        $('#logout').css('display', 'inline-block')
+                        $('#self_service').css('background', 'rgba(8, 183, 130, 0.1)')
+                        $('#self_service').css('border', 'none')
+                        $('#self_service').css('display', 'inline-block')
+                        $('#username_item').text(result.online.Username)
+                        if (result.macOnlineCount) {
+                            $('#online-count').text('(' + result.macOnlineCount + ')')
+                        }
+                        if (result.online.Name === '' || result.online.Name === null) {
+                            $('#name').text('-')
+                        } else {
+                            $('#name').text(result.online.Name)
+                        }
+                        if (result.online.UserIpv4 && result.online.UserIpv4 !== '') {
+                            $('#userIPV4').text(result.online.UserIpv4)
+                        } else {
+                            $('#userIPV4').text('-')
+                            $('.page-details-item:has(#userIPV4)').hide(); // 隐藏 IPv4 的 HTML
+                        }
+                        if (result.online.UserIpv6 && result.online.UserIpv6 !== '') {
+                            $('#userIPV6').text(result.online.UserIpv6)
+                        } else {
+                            $('#userIPV6').text('-')
+                            $('.page-details-item:has(#userIPV6)').hide(); // 隐藏 IPv6 的 HTML
+                        }
+                        if (result.online.UserMac === '' || result.online.UserMac === null) {
+                            $('#mac').text('-')
+                        } else {
+                            $('#mac').text(result.online.UserMac)
+                        }
+                        let str4 = '';
+                        if ((result.online.BytesIn4 && result.online.BytesIn4 !== "0") || (result.online.BytesOut4 && result.online.BytesOut4 !== "0")) {
+                            str4 = byteConvert(result.online.BytesIn4) + ' / ' + byteConvert(result.online.BytesOut4)
+                            $('#bytes4').text(str4)
+                        } else {
+                            $('#dspBytes4').css('display', 'none');
+                        }
+                        let str6 = '';
+                        if ((result.online.BytesIn6 && result.online.BytesIn6 !== "0") || (result.online.BytesOut6 && result.online.BytesOut6 !== "0")) {
+                            str6 = byteConvert(result.online.BytesIn6) + ' / ' + byteConvert(result.online.BytesOut6)
+                            $('#bytes6').text(str6)
+                        } else {
+                            $('#dspBytes6').css('display', 'none');
+                        }
+                        //console.log('数据返回的时间', result.online.AddTime)
+                        // result.online.AddTime = '2022-01-14T21:45:54+08:00'
+                        if (result.online.AddTime === '' || result.online.AddTime === null) {
+                            $('#time').text('-')
+                        } else {
+                            $('#time').text(formatSeconds(result.online.AddTime))
+                        }
+
+
+                        //判断当前运营商状态
+                        if (result.enableDial === true) {
+                            if (result.isp && result.isp !== "" && isp_option[result.isp]) {
+                                $('#isp').text(isp_option[result.isp])
+                                $('#dspIsp').css('display', 'block');
+                            } else {
+                                $('#dspIsp').css('display', 'none');
+                            }
+
+                            $('#operator_status').show();
+                            if (result.dialCode === '' && result.dialMsg === '') {
+                                $('#circle').show();
+                                startPolling(); // 开始轮询
+                            } else {
+                                if (result.dialCode === 'ok:dialup') {
+                                    $('#status').text('拨号成功！')
+                                } else {
+                                    // 显示重拨按钮
+                                    $('#redial').show()
+                                    if (result.dialMsg !== '') {
+                                        $('#status').text(result.dialMsg)
+                                    } else {
+                                        $('#status').text(result.dialCode)
+                                    }
+                                }
+                            }
+                        }
+
+                        // 认证成功后弹框通知
+                        showAlertNotice(notice_alert_after);
+                        return;
+                    } else if (result.code === 1) {
+                        loginAccount.css('opacity', '1')
+                        allowClick = true;
+                        isRequesting = false;
+                        loginAccount.text('立即登录').prop('disabled', false);
+
+                        if (result.msg) {
+                            // 处理认证失败返回值
+                            if (result.msg === '第三方密码校验失败') {
+                                showMessage('账号密码错误，请修改后重试', 'warning');
+                            } else if (result.msg === '认证失败') {
+                                showMessage('认证失败，请检查账号密码后重试', 'warning');
+                            } else if (result.msg === '第三方密码校验超时') {
+                                showMessage('登录超时，请重试', 'warning');
+                            } else {
+                                showMessage(result.msg, 'warning');
+                            }
+                            return;
+                        }
+
+                        // 如果是第一次认证失败，localStorage设置计数
+                        if (!localStorage.getItem('CertificationFalseCount')) {
+                            localStorage.setItem('CertificationFalseCount', '0')
+                        }
+
+                        // 认证失败  计数自增
+                        localStorage.setItem('CertificationFalseCount', JSON.parse(localStorage.getItem('CertificationFalseCount')) + 1)
+
+                        // TODO 流程没确认完毕，如果认证失败先直接走多对一进行调试
+                        // 走多对一流程
+                        manyToOneProxy()
+                        return
+                    } else if (result.code === 2) {
+                        loginAccount.css('opacity', '1')
+                        allowClick = true;
+                        isRequesting = false;
+                        loginAccount.text('立即登录').prop('disabled', false);
+                        var captchaWasVisible = $('#code').css('display') !== 'none';
+                        $('#code').css('display', 'block');
+                        $('#codeImg').attr('src', result.captcha.picPath);
+                        postData.captchaId = result.captcha.captchaId;
+                        if (captchaWasVisible && result.msg) {
+                            showMessage(result.msg, 'warning');
+                        }
+                        return
+                    } else {
+                        showMessage(result.msg, 'warning');
+                    }
+                })
+
+                // window.setTimeout(function () {
+                //     if (resultCode <= 0) {
+                //         clearInterval(interval); // 关闭定时器
+                //         loginAccount.css('opacity', '1')
+                //         $("#err").text('登出，请稍后重试');
+                //     }
+                // }, 15000);
+            }
+        })
+    }
+
+
+</script></body></html>

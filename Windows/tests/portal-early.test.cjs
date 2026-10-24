@@ -1,7 +1,7 @@
 const {chromium}=require('playwright');
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 const bootstrap=fs.readFileSync(path.join(__dirname,'../../macOS/source/PortalBootstrap.js'),'utf8').replace('/*CAMPUS_ORIGIN*/','"http://portal.test"');
-const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8');
+const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd());
 const cfg={origin:'http://portal.test',username:'dummy-user',password:'dummy-password',userSelector:'',passwordSelector:'',submitSelector:'',submit:true};
 const script=template.replace('/*CAMPUS_CONFIG*/',JSON.stringify(cfg));
 // Mirrors the inspected school's onload + asynchronous API callback contracts.

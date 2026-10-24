@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,name),'utf8');
-const template=read('../source/PortalTemplate.js').replace('  /*CAMPUS_CAPTCHA*/',read('../source/PortalCaptcha.js')).replace('  /*CAMPUS_AGREEMENTS*/',read('../source/PortalAgreements.js'));
+const template=read('../source/PortalTemplate.js').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd()).replace('  /*CAMPUS_CAPTCHA*/',read('../source/PortalCaptcha.js')).replace('  /*CAMPUS_AGREEMENTS*/',read('../source/PortalAgreements.js'));
 const cfg={origin:'http://zportal.test',username:'fixture-user',password:'fixture-password',userSelector:'',passwordSelector:'',submitSelector:'',serviceOption:'',submit:true};
 const script=overrides=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,...overrides}));
 (async()=>{

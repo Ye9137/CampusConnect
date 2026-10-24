@@ -15,6 +15,7 @@
     <Compile Include="../source/WifiService.cs" Link="WifiService.cs" />
     <EmbeddedResource Include="../source/PortalContext.js" LogicalName="CampusConnect.PortalContext.js" />
     <EmbeddedResource Include="../source/PortalTemplate.js" LogicalName="CampusConnect.PortalTemplate.js" />
+    <EmbeddedResource Include="../source/PortalAccount.js" LogicalName="CampusConnect.PortalAccount.js" />
     <EmbeddedResource Include="../source/PortalAgreements.js" LogicalName="CampusConnect.PortalAgreements.js" />
     <EmbeddedResource Include="../source/PortalCaptcha.js" LogicalName="CampusConnect.PortalCaptcha.js" />
   </ItemGroup>

@@ -1,6 +1,6 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8');
+const template=fs.readFileSync(path.join(__dirname,'../source/PortalTemplate.js'),'utf8').replace('  /*CAMPUS_ACCOUNT*/',fs.readFileSync(path.join(__dirname,'../source/PortalAccount.js'),'utf8').trimEnd());
 const cfg={origin:'http://portal.test',username:'fixture-user',password:'fixture-password',submit:true,serviceOption:'中国移动'};
 const script=options=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,...options}));
 const form='<form><input name="username"><input type="password"><button type="button" onclick="window.clicks++">登录</button></form><script>window.clicks=0</script>';
