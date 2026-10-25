@@ -308,6 +308,8 @@ foreach (var code in new[] { "authentication-rejected", "missing-credentials", "
 foreach (var http in new[] { 408, 429, 500, 502, 503, 504 }) Expect(PortalRetryPolicy.IsTemporaryNavigationFailure(http, "Unknown"), "temporary HTTP failure retries");
 foreach (var http in new[] { 400, 401, 403, 404 }) Expect(!PortalRetryPolicy.IsTemporaryNavigationFailure(http, "Unknown"), "permanent HTTP/configuration failure requires attention");
 foreach (var error in new[] { "ServerUnreachable", "Timeout", "ConnectionAborted", "ConnectionReset", "Disconnected", "CannotConnect", "HostNameNotResolved", "ErrorHttpInvalidServerResponse" }) Expect(PortalRetryPolicy.IsTemporaryNavigationFailure(0, error), "temporary network error retries");
+Expect(PortalRetryPolicy.IsTemporaryNavigationFailure(200, "ConnectionReset"), "network failure after response headers remains retryable");
+Expect(!PortalRetryPolicy.IsTemporaryNavigationFailure(404, "ConnectionReset"), "explicit bad endpoint is not hidden by a later connection error");
 foreach (var error in new[] { "CertificateExpired", "CertificateIsInvalid", "ValidAuthenticationCredentialsRequired", "ValidProxyAuthenticationRequired", "RedirectFailed", "OperationCanceled", "Unknown" }) Expect(!PortalRetryPolicy.IsTemporaryNavigationFailure(0, error), "security/configuration failure is not retried");
 
 // Regression: unchanged SSID must not latch a formerly successful authentication forever.

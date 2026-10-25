@@ -147,7 +147,7 @@ public static class PortalRetryPolicy
         return new(!retry, retry ? now + Cooldown : null);
     }
     public static bool IsTemporaryNavigationFailure(int httpStatus, string webError)
-        => (httpStatus is 408 or 429 or >= 500 and <= 599) || (httpStatus == 0 && webError is
+        => (httpStatus is 408 or 429 or >= 500 and <= 599) || (httpStatus < 400 && webError is
             "ServerUnreachable" or "Timeout" or "ConnectionAborted" or "ConnectionReset" or "Disconnected"
             or "CannotConnect" or "HostNameNotResolved" or "ErrorHttpInvalidServerResponse");
     public static string ProblemCode(string code) => code switch {
