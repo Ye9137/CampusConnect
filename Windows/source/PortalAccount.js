@@ -38,7 +38,8 @@
       requests.delete(xhr);
       if (xhr.status < 200 || xhr.status >= 300) {
         // Optional prechecks deliberately fall through on network errors.
-        if (stage === 'password-check' || stage === 'portal-login') state.result = 'request-error';
+        if (stage === 'password-check' || stage === 'portal-login')
+          state.result = xhr.status === 0 || [408,429].includes(xhr.status) || xhr.status >= 500 ? 'request-error' : 'fail';
         return;
       }
       let result = xhr.responseJSON;

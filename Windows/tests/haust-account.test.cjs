@@ -25,7 +25,7 @@ const script=extra=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,
    requests.push({path:url.pathname,method:req.method(),data:Object.fromEntries(new URLSearchParams(req.postData()||''))});
    const result=replies[url.pathname]||{code:0,online:{Username:'dummy-user',Name:'',UserMac:'',AddTime:''},msg:''};
    if(result.abort)return route.abort();
-   return route.fulfill({json:result});
+   return route.fulfill({status:result.httpStatus||200,json:result});
   });
   const reset=async(extra={})=>{
    requests.length=0;errors.length=0;replies=extra;holdConfig=false;
@@ -62,6 +62,15 @@ const script=extra=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,
   const state=await page.evaluate(()=>JSON.stringify(window.__campusSubmitAttempt));
   eq(state.includes('dummy-password'),false);eq(state.includes('dummy-user'),false);
   await reset({'/api/account/login':{abort:true}});eq(await page.evaluate(script()),'submitted');eq(await result(),'authentication-request-failed');
+  for(const httpStatus of [400,401,403,404]){
+   await reset({'/api/account/login':{httpStatus}});
+   eq(await page.evaluate(script()),'submitted');eq(await result(),'authentication-rejected');
+   const count=requests.length;eq(await page.evaluate(script()),'authentication-rejected');eq(requests.length,count);
+  }
+  for(const httpStatus of [408,429,500,503]){
+   await reset({'/api/account/login':{httpStatus}});
+   eq(await page.evaluate(script()),'submitted');eq(await result(),'authentication-request-failed');
+  }
   await reset();await page.evaluate(()=>window.dxzAuthApiUrl='/preauth');replies['/preauth']={abort:true};
   eq(await page.evaluate(script()),'submitted');eq(await result(),'authenticated');
   await reset();eq(await page.evaluate(script({submit:false})),'filled');eq(requests.length,0);
