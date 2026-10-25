@@ -290,6 +290,26 @@ if (OperatingSystem.IsWindows()) {
     } finally { if (OperatingSystem.IsWindows()) Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(testKey, false); }
 } else Console.WriteLine("SKIP: Windows startup registry integration (requires Windows).");
 
+// Transient failure policy and the full background retry gate.
+foreach (var code in new[] { "load-temporary", "authentication-timeout", "result-check-interrupted", "authentication-request-failed", "waiting-ready", "script-failed" }) {
+    var decision = PortalRetryPolicy.AfterFailure(code, true, true, now);
+    var retry = new PortalRecovery(); retry.Observe(InternetStatus.Unavailable);
+    Expect(!decision.RequiresInteraction && decision.RetryNotBefore == now.AddSeconds(5), "transient failure schedules recovery: " + code);
+    Expect(!retry.ShouldAuthenticate(true, true, now.AddSeconds(4), decision.RequiresInteraction, false, decision.RetryNotBefore), "cooldown begins at failure, not original login: " + code);
+    Expect(retry.ShouldAuthenticate(true, true, now.AddSeconds(5), decision.RequiresInteraction, false, decision.RetryNotBefore), "same-network recovery unblocks after failure: " + code);
+    Expect(!retry.ShouldAuthenticate(true, true, now.AddSeconds(5), decision.RequiresInteraction, true, decision.RetryNotBefore), "in-flight requests are never overlapped");
+    Expect(PortalRetryPolicy.AfterFailure(code, false, true, now).RequiresInteraction, "pause remains paused");
+    Expect(PortalRetryPolicy.AfterFailure(code, true, false, now).RequiresInteraction, "manual submit stays manual");
+}
+foreach (var code in new[] { "authentication-rejected", "missing-credentials", "service-required", "agreement-required", "submission-unconfirmed", "wrong-origin", "load-failed", "missing-fields", "unknown" }) {
+    var decision = PortalRetryPolicy.AfterFailure(code, true, true, now);
+    Expect(decision.RequiresInteraction && decision.RetryNotBefore is null, "manual blocker is never retried: " + code);
+}
+foreach (var http in new[] { 408, 429, 500, 502, 503, 504 }) Expect(PortalRetryPolicy.IsTemporaryNavigationFailure(http, "Unknown"), "temporary HTTP failure retries");
+foreach (var http in new[] { 400, 401, 403, 404 }) Expect(!PortalRetryPolicy.IsTemporaryNavigationFailure(http, "Unknown"), "permanent HTTP/configuration failure requires attention");
+foreach (var error in new[] { "ServerUnreachable", "Timeout", "ConnectionAborted", "ConnectionReset", "Disconnected", "CannotConnect", "HostNameNotResolved", "ErrorHttpInvalidServerResponse" }) Expect(PortalRetryPolicy.IsTemporaryNavigationFailure(0, error), "temporary network error retries");
+foreach (var error in new[] { "CertificateExpired", "CertificateIsInvalid", "ValidAuthenticationCredentialsRequired", "ValidProxyAuthenticationRequired", "RedirectFailed", "OperationCanceled", "Unknown" }) Expect(!PortalRetryPolicy.IsTemporaryNavigationFailure(0, error), "security/configuration failure is not retried");
+
 // Regression: unchanged SSID must not latch a formerly successful authentication forever.
 var recovery = new PortalRecovery();
 Expect(recovery.ShouldAuthenticate(true, true, now), "first authentication starts before probes or timer ticks");

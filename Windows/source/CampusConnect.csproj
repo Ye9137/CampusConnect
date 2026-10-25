@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.1.9</Version>
-    <FileVersion>2.1.9.0</FileVersion>
+    <Version>2.1.10-preview.1</Version>
+    <FileVersion>2.1.10.1</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -24,6 +24,7 @@
     <Product>校园Wi-Fi小助手</Product>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="CampusConnect.PortalTests" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <EmbeddedResource Include="PortalContext.js" LogicalName="CampusConnect.PortalContext.js" />

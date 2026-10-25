@@ -54,6 +54,8 @@ jobs:
           dotnet run --project Windows/tests -c Release -- --frame-fixture Windows/work/frame-scripts.json
       - name: Test native CAPTCHA input and configuration persistence
         run: dotnet run --project Windows/native-tests -c Release
+      - name: Test native portal reconnect state
+        run: dotnet run --project Windows/portal-native-tests -c Release
       - name: Test browser automation
         run: node Windows/tests/portal.test.mjs
       - name: Test desktop pages

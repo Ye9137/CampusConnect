@@ -14,7 +14,7 @@
   })();
   if (successPage || zportalSuccess || outcome === 'success') return 'authenticated';
   if (outcome === 'fail') return 'authentication-rejected' + (window.__campusSubmitAttempt?.failureCode ? ':' + window.__campusSubmitAttempt.failureCode : '');
-  if (outcome === 'request-error') return 'submission-unconfirmed';
+  if (outcome === 'request-error') return 'authentication-request-failed';
   if (cfg.statusOnly) return window.__campusSubmitted ? 'awaiting-authentication' : 'not-submitted';
   const pending = cfg.confirmSubmit && window.__campusSubmitAttempt;
   if (pending && pending.failed) return 'submission-unconfirmed';

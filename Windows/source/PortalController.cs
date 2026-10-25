@@ -17,6 +17,7 @@ internal sealed class PortalController
     public event Action<bool>? ProcessFailed;
     public bool IsActive { get; private set; }
     public bool RequiresInteraction { get; private set; }
+    public DateTimeOffset? RetryNotBefore { get; private set; }
     public bool IsAuthenticating => captchaHandlingGeneration == generation || authenticationDeadline != null || (!finished && !RequiresInteraction && fillingGeneration == generation);
     public string Address {
         get {
@@ -50,9 +51,14 @@ internal sealed class PortalController
     private void Fail(string code, string message)
     {
         generation++;
-        RequiresInteraction = true; finished = true; password = ""; authenticationDeadline = null;
-        Status?.Invoke(message);
-        if (problemGate.Report(code, profile?.ServiceOption) is { } problem) Problem?.Invoke(problem);
+        var decision = PortalRetryPolicy.AfterFailure(code, profile?.Automatic == true && !discovering,
+            profile?.AutoSubmit == true, DateTimeOffset.UtcNow);
+        RequiresInteraction = decision.RequiresInteraction; RetryNotBefore = decision.RetryNotBefore;
+        finished = true; password = ""; authenticationDeadline = null;
+        Status?.Invoke(message + (RetryNotBefore is not null
+            ? " 将先复查联网状态，等待至少 5 秒后继续自动重试。" : ""));
+        // Automatic transient retries must not repeatedly open modal dialogs.
+        if (RequiresInteraction && problemGate.Report(PortalRetryPolicy.ProblemCode(code), profile?.ServiceOption) is { } problem) Problem?.Invoke(problem);
     }
 
     private async Task InitializeAsync()
@@ -109,8 +115,9 @@ internal sealed class PortalController
             if (profile is null || e.NavigationId != navigationId) return;
             if (!e.IsSuccess || e.HttpStatusCode >= 400) {
                 if (redirectSession?.Blocked == true || e.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled) return;
-                RequiresInteraction = true; finished = true; password = "";
-                Fail("load-failed", e.HttpStatusCode >= 400 ? $"学校认证服务器返回 HTTP {e.HttpStatusCode}，已暂停自动重试。" : "认证页加载失败，已暂停自动重试，请检查校园网络和认证地址。"); return;
+                var temporary = PortalRetryPolicy.IsTemporaryNavigationFailure(e.HttpStatusCode, e.WebErrorStatus.ToString());
+                Fail(temporary ? "load-temporary" : "load-failed", e.HttpStatusCode >= 400
+                    ? $"学校认证服务器返回 HTTP {e.HttpStatusCode}。" : "认证页加载失败，请检查校园网络和认证地址。"); return;
             }
             if (authenticationDeadline != null) await ObserveAuthenticationAsync();
             else {
@@ -174,7 +181,7 @@ internal sealed class PortalController
     public void ConfirmInternetAccess()
     {
         problemGate.Reset();
-        internetConfirmed = true; RequiresInteraction = false;
+        internetConfirmed = true; RequiresInteraction = false; RetryNotBefore = null;
         authenticationDeadline = null; finished = true; password = "";
         Status?.Invoke("已经连接成功");
     }
@@ -191,13 +198,17 @@ internal sealed class PortalController
     }
     public void ResetBrowser()
     {
+        var waitingForUser = RequiresInteraction && authenticationDeadline is null;
         problemGate.Reset();
         generation++;
         profile = null; password = ""; finished = false; IsActive = false;
         redirectSession = null;
         authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false; observingGeneration = -1;
-        // Never re-submit a login/captcha just because the UI browser was restarted.
-        RequiresInteraction = true;
+        // A vanished browser cannot keep an automatic attempt pending forever.
+        // Preserve existing manual/CAPTCHA holds; retry active automatic work only
+        // after the normal connectivity probe and cooldown, never from this callback.
+        RequiresInteraction = waitingForUser;
+        RetryNotBefore = waitingForUser ? null : DateTimeOffset.UtcNow + PortalRetryPolicy.Cooldown;
         initialization = null; bootstrapId = null; fillingGeneration = -1;
         var oldView = View;
         View = new() { Dock = DockStyle.Fill };
@@ -209,7 +220,7 @@ internal sealed class PortalController
         generation++;
         profile = null; password = ""; finished = false; authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false;
         redirectSession = null;
-        IsActive = false; RequiresInteraction = false;
+        IsActive = false; RequiresInteraction = false; RetryNotBefore = null;
         try {
             if (View.CoreWebView2 is not null) {
                 View.CoreWebView2.Stop();
@@ -237,7 +248,7 @@ internal sealed class PortalController
         if (authenticationConfirmed) return;
         problemGate.Reset();
         authenticationConfirmed = true; authenticationDeadline = null;
-        finished = true; password = ""; RequiresInteraction = false;
+        finished = true; password = ""; RequiresInteraction = false; RetryNotBefore = null;
         if (!internetConfirmed) Status?.Invoke("学校已确认登录成功，正在检查实际联网状态。");
         Submitted?.Invoke();
     }
@@ -265,20 +276,20 @@ internal sealed class PortalController
                     authenticationDeadline = null; RequiresInteraction = true;
                     Fail("authentication-rejected", PortalProblem.AuthenticationMessage(result)); return;
                 }
+                if (result == "authentication-request-failed") {
+                    Fail("authentication-request-failed", "学校认证请求暂时失败。"); return;
+                }
                 if (result == "submission-unconfirmed") {
                     Fail("submission-unconfirmed", "学校认证请求未完成，请查看页面提示后重新认证。"); return;
                 }
                 if (DateTimeOffset.UtcNow >= deadline) {
-                    authenticationDeadline = null; RequiresInteraction = true;
-                    Status?.Invoke("30 秒内未确认已登录页面或学校成功结果，正在复查联网状态；仍未联网时请查看网页提示后重试。");
-                    Submitted?.Invoke(); return;
+                    Fail("authentication-timeout", "30 秒内未确认学校登录结果。"); return;
                 }
                 await Task.Delay(500);
             }
         } catch (Exception) {
             if (expected == generation) {
-                authenticationDeadline = null; RequiresInteraction = true;
-                Status?.Invoke("登录结果校验中断，请检查网页结果或重新认证。");
+                Fail("result-check-interrupted", "登录结果校验暂时中断。");
             }
         } finally { if (observingGeneration == expected) observingGeneration = -1; }
     }
@@ -290,7 +301,7 @@ internal sealed class PortalController
         try { await FillAsync(expected); }
         catch (Exception) {
             if (expected == generation) {
-                Fail("script-failed", "自动填写失败，已暂停自动重试，请查看处理建议。");
+                Fail("script-failed", "自动填写暂时未完成。");
             }
         }
         finally { if (fillingGeneration == expected) fillingGeneration = -1; }
@@ -412,6 +423,8 @@ internal sealed class PortalController
                     Status?.Invoke("已触发登录，正在核验学校返回结果和已登录页面…");
                     _ = WatchForCaptchaAsync(expected);
                     Submitted?.Invoke(); await ObserveAuthenticationAsync(); return;
+                case "authentication-request-failed":
+                    Fail("authentication-request-failed", "学校认证请求暂时失败。"); return;
                 case "waiting-submit" when attempt < 80: await Task.Delay(150); continue;
                 case "waiting-submit": case "submission-unconfirmed":
                     RequiresInteraction = true; finished = true; password = "";
@@ -439,7 +452,7 @@ internal sealed class PortalController
                     RequiresInteraction = true; finished = true; password = "";
                     Fail("agreement-required", "网页必选勾选项尚未确认，请在认证页完成协议阅读或手动勾选后重试。"); return;
                 case "manual-required": RequiresInteraction = true; finished = true; password = ""; Status?.Invoke("学校要求验证码或运营商信息，请在认证页补充。"); _ = WatchForCaptchaAsync(expected); return;
-                case "waiting-ready": RequiresInteraction = true; finished = true; password = ""; Fail("waiting-ready", "学校认证参数尚未就绪，请检查页面后重试。"); return;
+                case "waiting-ready": RequiresInteraction = true; finished = true; password = ""; Fail("waiting-ready", "学校认证参数尚未就绪。"); return;
                 case "invalid-selector": RequiresInteraction = true; Fail("missing-fields", "认证页面暂时无法识别，请在网页中手动登录。"); return;
                 case "wrong-origin" when attempt < 80: await Task.Delay(150); continue;
                 case "wrong-origin": RequiresInteraction = true; Fail("waiting-ready", "认证页面仍在跳转，请等待页面加载后重新认证。"); return;

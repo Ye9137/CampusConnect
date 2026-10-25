@@ -61,7 +61,7 @@ const script=extra=>template.replace('/*CAMPUS_CONFIG*/',JSON.stringify({...cfg,
   eq(await page.evaluate(script()),'submitted');eq(await result(),'authentication-rejected:E20027');
   const state=await page.evaluate(()=>JSON.stringify(window.__campusSubmitAttempt));
   eq(state.includes('dummy-password'),false);eq(state.includes('dummy-user'),false);
-  await reset({'/api/account/login':{abort:true}});eq(await page.evaluate(script()),'submitted');eq(await result(),'submission-unconfirmed');
+  await reset({'/api/account/login':{abort:true}});eq(await page.evaluate(script()),'submitted');eq(await result(),'authentication-request-failed');
   await reset();await page.evaluate(()=>window.dxzAuthApiUrl='/preauth');replies['/preauth']={abort:true};
   eq(await page.evaluate(script()),'submitted');eq(await result(),'authenticated');
   await reset();eq(await page.evaluate(script({submit:false})),'filled');eq(requests.length,0);

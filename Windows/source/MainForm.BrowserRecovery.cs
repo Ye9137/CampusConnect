@@ -157,7 +157,9 @@ internal sealed partial class MainForm
         portal.View.Dock = DockStyle.None;
         portal.View.Visible = false;
         Controls.Add(portal.View);
-        portalStatus = "认证页面进程已恢复，请点击打开认证页继续。";
+        portalStatus = saved.Automatic && saved.AutoSubmit && !portal.RequiresInteraction
+            ? "认证页面已恢复，将在检查联网状态后继续自动重连。"
+            : "认证页面已恢复，请确认验证码或学校提示后点击打开认证页继续。";
         recoveryPanel.BringToFront();
     }
 }

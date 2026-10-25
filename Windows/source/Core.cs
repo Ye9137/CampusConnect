@@ -134,6 +134,29 @@ public sealed class AutoPolicy
     public void Reset() { LastAttempt = DateTimeOffset.MinValue; }
 }
 
+// Only transient failures may resume unattended login. School rejections and
+// incomplete manual input retain their interaction hold.
+public sealed record PortalRetryDecision(bool RequiresInteraction, DateTimeOffset? RetryNotBefore);
+public static class PortalRetryPolicy
+{
+    public static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(5);
+    public static PortalRetryDecision AfterFailure(string code, bool automatic, bool autoSubmit, DateTimeOffset now)
+    {
+        var retry = automatic && autoSubmit && (code is "load-temporary" or "authentication-timeout"
+            or "result-check-interrupted" or "authentication-request-failed" or "waiting-ready" or "script-failed");
+        return new(!retry, retry ? now + Cooldown : null);
+    }
+    public static bool IsTemporaryNavigationFailure(int httpStatus, string webError)
+        => (httpStatus is 408 or 429 or >= 500 and <= 599) || (httpStatus == 0 && webError is
+            "ServerUnreachable" or "Timeout" or "ConnectionAborted" or "ConnectionReset" or "Disconnected"
+            or "CannotConnect" or "HostNameNotResolved" or "ErrorHttpInvalidServerResponse");
+    public static string ProblemCode(string code) => code switch {
+        "load-temporary" => "load-failed",
+        "authentication-timeout" or "result-check-interrupted" or "authentication-request-failed" => "submission-unconfirmed",
+        _ => code
+    };
+}
+
 public enum InternetStatus { Online, Unavailable }
 public sealed class PortalRecovery
 {
@@ -148,8 +171,9 @@ public sealed class PortalRecovery
         else Failures = Math.Min(2, Failures + 1);
         State = result;
     }
-    public bool ShouldAuthenticate(bool enabled, bool portalEnabled, DateTimeOffset now)
-        => enabled && portalEnabled && State != InternetStatus.Online && ((Attempts == 0 && Failures == 0) || Failures >= 1)
+    public bool ShouldAuthenticate(bool enabled, bool portalEnabled, DateTimeOffset now,
+        bool requiresInteraction = false, bool authenticating = false, DateTimeOffset? retryNotBefore = null)
+        => enabled && portalEnabled && !requiresInteraction && !authenticating && (retryNotBefore is null || now >= retryNotBefore) && State != InternetStatus.Online && ((Attempts == 0 && Failures == 0) || Failures >= 1)
             && now - LastAttempt >= RetryDelay;
     public void Begin(DateTimeOffset now) { LastAttempt = now; Attempts = Math.Min(4, Attempts + 1); }
     public void Reset() { Failures = 0; Attempts = 0; LastAttempt = DateTimeOffset.MinValue; State = InternetStatus.Unavailable; }
