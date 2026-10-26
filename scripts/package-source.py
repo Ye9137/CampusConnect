@@ -17,6 +17,7 @@ files += [root / path for path in ("macOS/README.md", "macOS/test.sh", "macOS/te
 files += sorted((root / "Windows").glob("*-更新说明.md"))
 files += sorted((root / "macOS").glob("*-更新说明.md"))
 files.append(root / "macOS/test-notices.sh")
+files.append(root / "macOS/test-redirect.sh")
 files += sorted((root / "docs" / "screenshots").glob("*.png"))
 with ZipFile(output, "w", ZIP_DEFLATED) as archive:
     for path in sorted(set(files)):

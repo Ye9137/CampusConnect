@@ -61,7 +61,9 @@ if (args.Length == 2 && args[0] == "--redirect-fixture") {
         probe = PortalScript.LoginFormProbe(landing),
         entryProbe = PortalScript.LoginFormProbe(entry),
         fill = PortalScript.Build(landing, "fixture-password"),
-        wrongOriginFill = PortalScript.Build(entry, "fixture-password")
+        wrongOriginFill = PortalScript.Build(entry, "fixture-password"),
+        reboundProbe = PortalScript.LoginFormProbe(PortalScript.AtCurrentPage(landing, "http://other.test/login")),
+        reboundFill = PortalScript.Build(PortalScript.AtCurrentPage(landing, "http://other.test/login"), "fixture-password")
     }));
     Console.WriteLine($"PASS: {checks} redirect checks; browser fixture generated.");
     return;

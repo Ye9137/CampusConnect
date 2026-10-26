@@ -22,9 +22,14 @@ const landingBootstrap=bootstrap.replace('/*CAMPUS_ORIGIN*/',JSON.stringify('htt
  const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://'+req.headers.host);
   const html=body=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(body)};
-  if(url.host==='1.1.1.1'){res.writeHead(302,{location:'http://10.129.1.1/landing'});res.end();return}
+  if(url.host==='1.1.1.1'){
+   const step=Number(url.searchParams.get('step')||0);
+   // Revisit both hosts over more than ten HTTP redirects before a script redirect.
+   res.writeHead(302,{location:step<6?'http://10.129.1.1/bounce?step='+step:'http://10.129.1.1/landing'});res.end();return
+  }
   if(url.host==='other.test')return html('<input name=username><input type=password><button>连接</button>');
   if(url.host!=='10.129.1.1'){res.writeHead(403);res.end();return}
+  if(url.pathname==='/bounce'){res.writeHead(302,{location:'http://1.1.1.1/?step='+(Number(url.searchParams.get('step'))+1)});res.end();return}
   if(url.pathname==='/landing')return html(`<script>location.replace(${JSON.stringify(data.finalUrl)})</script>`);
   if(url.pathname==='/spinner')return html('正在跳转…');
   if(url.pathname==='/zportal')return html(fs.readFileSync(path.join(__dirname,'fixtures/zportal-login.html'),'utf8'));
@@ -53,7 +58,8 @@ const landingBootstrap=bootstrap.replace('/*CAMPUS_ORIGIN*/',JSON.stringify('htt
   assert.equal(await page.locator('input[type=password]').inputValue(),'fixture-password');
   assert.equal(await page.evaluate(data.fill),'already-submitted');
   assert.equal(await page.evaluate(()=>clicks),1,'one login across HTTP and script redirects');
-  assert.deepEqual(requests.map(request=>request.url),['http://1.1.1.1/','http://10.129.1.1/landing',data.finalUrl]);
+  assert(requests.length>12,'long redirect chain completed');
+  assert.deepEqual(requests.slice(-2).map(request=>request.url),['http://10.129.1.1/landing',data.finalUrl]);
   assert(requests.every(request=>!request.body&&!request.url.includes('fixture-password')),'redirect requests carry no saved password');
   await page.goto('http://10.129.1.1/spinner');
   assert.equal(await page.evaluate(data.probe),false,'loading/intermediate page does not pin credentials');
@@ -69,6 +75,9 @@ const landingBootstrap=bootstrap.replace('/*CAMPUS_ORIGIN*/',JSON.stringify('htt
   assert.equal(await page.evaluate(data.probe),false);
   assert.equal(await page.evaluate(data.fill),'wrong-origin','pinning preserves foreign-page denial');
   assert.equal(await page.locator('input[type=password]').inputValue(),'');
-  console.log('PASS: offline 1.1.1.1 HTTP redirect + script redirect, query preservation, landing form probe, destination bootstrap, one login, credential-free intermediate requests, unrelated-origin denial.');
+  assert.equal(await page.evaluate(data.reboundProbe),true,'new destination recognizes its form after rebinding');
+  assert.equal(await page.evaluate(data.reboundFill),'submitted','a further cross-host login page can submit');
+  assert.equal(await page.locator('input[type=password]').inputValue(),'fixture-password');
+  console.log('PASS: offline long HTTP chain with host revisits + script redirect, query preservation, landing form probe, destination bootstrap, one login per document, and further cross-host login after rebinding.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

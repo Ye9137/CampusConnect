@@ -179,38 +179,19 @@ public sealed class PortalRecovery
     public void Reset() { Failures = 0; Attempts = 0; LastAttempt = DateTimeOffset.MinValue; State = InternetStatus.Unavailable; }
 }
 
-public enum PortalNavigationDecision { Allowed, Redirected, External, Invalid, Loop, Expired }
+public enum PortalNavigationDecision { Allowed, Redirected, Invalid }
 
-// An entry URL is not necessarily the login origin. Follow the current auth
-// navigation chain, including login links opened in this view. Pinning identifies
-// a login document, but school
-// SSO may still redirect it to another host or port during the same attempt.
-// This state is per attempt; dynamic portal query strings are never saved.
-public sealed class PortalRedirectSession(string entryUrl, DateTimeOffset started)
+// Track the current HTTP/HTTPS document without restricting redirects by host,
+// scheme, count, elapsed time or previously visited URLs. Never persist this URL.
+public sealed class PortalRedirectSession(string entryUrl)
 {
-    private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     public string CurrentUrl { get; private set; } = entryUrl;
-    public bool Pinned { get; private set; }
-    public bool Blocked { get; private set; }
-    public void Pin() => Pinned = true;
 
-    public PortalNavigationDecision Navigate(string url, bool userInitiated, bool redirected, DateTimeOffset now)
+    public PortalNavigationDecision Navigate(string url)
     {
         var origin = CampusProfile.Origin(url);
-        if (origin is null) { Blocked = true; return PortalNavigationDecision.Invalid; }
+        if (origin is null) return PortalNavigationDecision.Invalid;
         var sameOrigin = origin == CampusProfile.Origin(CurrentUrl);
-        if (Blocked) {
-            Blocked = true; return PortalNavigationDecision.External;
-        }
-        if (!Pinned || !sameOrigin) {
-            if (now - started > TimeSpan.FromSeconds(30)) { Blocked = true; return PortalNavigationDecision.Expired; }
-            var uri = new Uri(url);
-            var key = uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
-            if (visited.Count >= 10 || !visited.Add(key)) { Blocked = true; return PortalNavigationDecision.Loop; }
-            if (new Uri(CurrentUrl).Scheme == "https" && uri.Scheme != "https") {
-                Blocked = true; return PortalNavigationDecision.External;
-            }
-        }
         CurrentUrl = url;
         return sameOrigin ? PortalNavigationDecision.Allowed : PortalNavigationDecision.Redirected;
     }
@@ -235,7 +216,7 @@ public static class PortalScript
             .Replace("/*CONTEXT_PASSWORD_SELECTOR*/", JsonSerializer.Serialize(""), StringComparison.Ordinal)
             .Replace("/*CONTEXT_SCRIPT*/", script, StringComparison.Ordinal);
     }
-    // No credentials: intermediate redirect/loading pages must not pin the chain.
+    // Inspect loading pages without credentials before filling the landing form.
     public static string LoginFormProbe(CampusProfile profile)
     {
         var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = "" });
