@@ -108,6 +108,50 @@ internal static class Program
                 Expect((portal.RetryNotBefore is null) == waitingForUser, "browser reset enforces cooldown before unattended retry");
             } finally { portal.View.Dispose(); }
         }
+        // Confirmed connectivity wins over late page callbacks and an open guide.
+        {
+            var portal = Create();
+            try {
+                var notices = 0; var status = "";
+                portal.Problem += _ => notices++;
+                portal.Status += value => status = value;
+                Fail(portal, "load-failed");
+                var problem = portal.CurrentProblem!;
+                using var guide = new PortalProblemDialog(problem, () => ReferenceEquals(portal.CurrentProblem, problem));
+                portal.ProblemCleared += guide.Dismiss;
+                guide.Shown += (_, _) => guide.BeginInvoke((Action)portal.ConfirmInternetAccess);
+                try { Expect(guide.ShowDialog() == DialogResult.Cancel, "online confirmation dismisses the production modal guide"); }
+                finally { portal.ProblemCleared -= guide.Dismiss; }
+                Expect(portal.CurrentProblem is null && !portal.RequiresInteraction, "online confirmation clears the old problem and manual hold");
+                var expected = (int)Field(portal, "generation")!;
+                portal.ConfirmInternetAccess();
+                Expect((int)Field(portal, "generation")! == expected, "repeated online probes do not invalidate current UI work");
+                foreach (var code in new[] { "load-failed", "load-temporary", "authentication-timeout" }) Fail(portal, code);
+                Expect(notices == 1 && portal.CurrentProblem is null && status == "已经连接成功" && !portal.RequiresInteraction,
+                    "late errors cannot replace verified connectivity with a failure or another wizard");
+                portal.ReportInternetUnavailable();
+                Fail(portal, "load-failed");
+                Expect(notices == 2 && portal.RequiresInteraction, "a later real outage can report authentication problems again");
+            } finally { portal.View.Dispose(); }
+        }
+        // Ping is explicitly allowed by some gateways before authentication.
+        // A captive observation must leave the production filler and credentials live.
+        {
+            var portal = Create();
+            try {
+                typeof(PortalController).GetProperty("IsActive")!.SetValue(portal, true);
+                Set(portal, "fillingGeneration", (int)Field(portal, "generation")!);
+                var observation = Connectivity.CheckWithPortalAsync(
+                    () => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success),
+                    () => Task.FromResult(new PortalProbe(PortalProbeState.Captive, "http://school.test/"))).GetAwaiter().GetResult();
+                if (observation.Status == InternetStatus.Online) portal.ConfirmInternetAccess(); else portal.ReportInternetUnavailable();
+                Expect(portal.IsAuthenticating && (string)Field(portal, "password")! == "fixture-secret",
+                    "ping-positive captive HTTP keeps the actual controller filling instead of clearing credentials");
+                Expect(portal.CurrentProblem is null && !portal.RequiresInteraction, "captive probe does not introduce a modal or manual hold");
+                portal.ConfirmInternetAccess();
+                Expect(!portal.IsAuthenticating && (string)Field(portal, "password")! == "", "real internet success still clears the finished login");
+            } finally { portal.View.Dispose(); }
+        }
         BrowserRedirectTests.Run(Expect);
         Console.WriteLine($"PASS: {checks} native portal checks (production redirects, recovery, cooldown, manual holds and browser restart).");
     }

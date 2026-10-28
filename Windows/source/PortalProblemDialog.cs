@@ -9,9 +9,10 @@ internal sealed class PortalProblemDialog : Form
     private readonly Button next = new() { Text = "下一步", AutoSize = true };
     private int step;
 
-    internal PortalProblemDialog(PortalProblem problem)
+    internal PortalProblemDialog(PortalProblem problem, Func<bool>? isCurrent = null)
     {
         this.problem = problem;
+        Shown += (_, _) => { if (isCurrent?.Invoke() == false) Dismiss(); };
         Text = "校园Wi-Fi小助手 · 认证处理向导";
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -41,6 +42,7 @@ internal sealed class PortalProblemDialog : Form
         AcceptButton = next;
         RefreshStep();
     }
+    internal void Dismiss() { DialogResult = DialogResult.Cancel; Close(); }
     private void RefreshStep()
     {
         progress.Text = $"处理向导 · 第 {step + 1} / {problem.Steps.Count} 步";

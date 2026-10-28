@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.1.10-preview.2</Version>
-    <FileVersion>2.1.10.2</FileVersion>
+    <Version>2.2.0</Version>
+    <FileVersion>2.2.0.0</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -30,6 +30,7 @@
     <EmbeddedResource Include="PortalContext.js" LogicalName="CampusConnect.PortalContext.js" />
     <EmbeddedResource Include="PortalTemplate.js" />
     <EmbeddedResource Include="PortalAccount.js" LogicalName="CampusConnect.PortalAccount.js" />
+    <EmbeddedResource Include="PortalGportal.js" LogicalName="CampusConnect.PortalGportal.js" />
     <EmbeddedResource Include="PortalAgreements.js" />
     <EmbeddedResource Include="../../macOS/source/PortalBootstrap.js" LogicalName="CampusConnect.PortalBootstrap.js" />
     <EmbeddedResource Include="PortalCaptcha.js" />

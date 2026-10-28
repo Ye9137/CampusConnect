@@ -16,7 +16,7 @@ internal static class BrowserRedirectTests
         using var form = new Form { Width = 1000, Height = 700, ShowInTaskbar = false };
         var data = Path.Combine(Path.GetTempPath(), "CampusConnect-redirect-" + Guid.NewGuid().ToString("N"));
         var portal = new PortalController(() => CoreWebView2Environment.CreateAsync(null, data,
-            new CoreWebView2EnvironmentOptions("--no-proxy-server")), _ => Task.FromResult(true));
+            new CoreWebView2EnvironmentOptions(PortalBrowserPolicy.Arguments)), _ => Task.FromResult(true));
         form.Controls.Add(portal.View);
         Exception? failure = null;
         form.Shown += async (_, _) => {
@@ -26,6 +26,7 @@ internal static class BrowserRedirectTests
                 var profile = new CampusProfile { Ssid = "Fixture-Campus", PortalUrl = server.Url("127.0.0.1", "/entry"),
                     Username = "fixture-user", AutoSubmit = true, Automatic = true };
                 await portal.OpenAsync(profile, "fixture-secret");
+                expect(!portal.View.CoreWebView2.Profile.IsInPrivateModeEnabled && portal.View.CoreWebView2.Profile.ProfileName.Equals(PortalBrowserPolicy.ProfileName, StringComparison.OrdinalIgnoreCase), "HTTP portal uses its own normal profile instead of InPrivate HTTPS-First mode");
                 await Until(async () => {
                     if (notices.Count > 0) throw new Exception("Redirect raised a blocking notice: " + notices[0].Code);
                     if (server.Records.Count < 2 || !portal.Address.Contains("/second")) return false;
@@ -38,6 +39,19 @@ internal static class BrowserRedirectTests
                 portal.ConfirmInternetAccess();
                 expect(!portal.RequiresInteraction && !portal.IsAuthenticating, "actual connectivity confirmation finishes the redirected login attempt");
 
+                // Reproduce a slow post-login landing failure after the network probe wins.
+                var completed = new TaskCompletionSource<bool>();
+                void LandingCompleted(object? _, CoreWebView2NavigationCompletedEventArgs e) { if (e.HttpStatusCode == 404) completed.TrySetResult(true); }
+                portal.View.CoreWebView2.NavigationCompleted += LandingCompleted;
+                portal.View.CoreWebView2.Navigate(server.Url("localhost", "/landing-error"));
+                await Until(() => Task.FromResult(server.Requests.Any(url => url == "/landing-error")), TimeSpan.FromSeconds(10));
+                portal.ConfirmInternetAccess();
+                server.ReleaseLandingFailure.TrySetResult(true);
+                await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                portal.View.CoreWebView2.NavigationCompleted -= LandingCompleted;
+                expect(notices.Count == 0 && portal.CurrentProblem is null && !portal.RequiresInteraction,
+                    "a real late HTTP 404 cannot reopen the wizard after internet confirmation");
+
                 // AutoSubmit=false must still fill the new destination after navigation.
                 portal.Stop(clearView: false);
                 await portal.OpenAsync(profile with { AutoSubmit = false, PortalUrl = server.Url("127.0.0.1", "/manual") }, "fixture-secret");
@@ -47,6 +61,11 @@ internal static class BrowserRedirectTests
                 await Until(async () => portal.Address.Contains("/manual-next") && JsonSerializer.Deserialize<string>(
                     await portal.View.CoreWebView2.ExecuteScriptAsync("document.querySelector('input[type=password]')?.value || ''")) == "fixture-secret", TimeSpan.FromSeconds(10));
                 expect(server.Records.Count == 2 && portal.RequiresInteraction, "manual mode follows and fills another host without submitting");
+                // The same HTTP error before confirmation must still be actionable.
+                await portal.OpenAsync(profile with { PortalUrl = server.Url("localhost", "/landing-error") }, "fixture-secret");
+                await Until(() => Task.FromResult(notices.Count > 0), TimeSpan.FromSeconds(10));
+                expect(portal.CurrentProblem?.Code == "load-failed" && portal.CurrentProblem.Summary.Contains("HTTP 404"),
+                    "a genuine pre-login HTTP 404 retains guidance and the concrete HTTP status");
                 portal.Stop();
                 expect(!portal.IsActive && !portal.IsAuthenticating, "Stop cancels all redirected work");
             } catch (Exception ex) { failure = ex; }
@@ -74,6 +93,7 @@ internal static class BrowserRedirectTests
         private readonly CancellationTokenSource cancellation = new();
         public readonly ConcurrentQueue<string> Requests = new();
         public readonly ConcurrentQueue<string> Records = new();
+        public readonly TaskCompletionSource<bool> ReleaseLandingFailure = new();
         public string Url(string host, string path) => $"http://{host}:{((IPEndPoint)listener.LocalEndpoint).Port}{path}";
         public FixtureServer() { listener.Start(); _ = Serve(); }
         public void Dispose() { cancellation.Cancel(); listener.Stop(); cancellation.Dispose(); }
@@ -108,7 +128,11 @@ internal static class BrowserRedirectTests
                         if (uri.AbsolutePath == "/record") Records.Enqueue(new string(body));
                     }
                     var status = "200 OK"; var extra = ""; var html = "";
-                    if (uri.AbsolutePath == "/entry") { status = "302 Found"; extra = "Location: " + Url("localhost", "/bounce?step=0") + "\r\n"; }
+                    if (uri.AbsolutePath == "/landing-error") {
+                        await ReleaseLandingFailure.Task.WaitAsync(cancellation.Token);
+                        status = "404 Not Found"; html = "Landing page unavailable";
+                    }
+                    else if (uri.AbsolutePath == "/entry") { status = "302 Found"; extra = "Location: " + Url("localhost", "/bounce?step=0") + "\r\n"; }
                     else if (uri.AbsolutePath == "/bounce") {
                         var step = int.Parse(uri.Query.Split('=')[1]);
                         if (step < 11) { status = "302 Found"; extra = "Location: " + Url(step % 2 == 0 ? "127.0.0.1" : "localhost", "/bounce?step=" + (step + 1)) + "\r\n"; }

@@ -28,7 +28,7 @@
   if (ready && (ready.failed || !ready.pageInfo || !ready.getServices)) return 'waiting-ready';
   const visible = e => e && !e.disabled && e.getClientRects().length > 0;
   const editable = e => e instanceof HTMLInputElement && !e.disabled && !e.readOnly;
-  let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton, accountButton;
+  let user, pass, submit, portalUser, portalPass, portalButton, zportalUser, zportalPass, zportalButton, accountButton, gportalForm, gportalUser, gportalPass, gportalButton;
   const tipFor = input => input === portalUser ? document.querySelector('#username_tip') :
     input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
   const available = input => editable(input) && (visible(input) ||
@@ -67,10 +67,21 @@
         zportalUser.form !== zform || zportalPass.form !== zform || zportalButton.form !== zform) {
       zportalUser = zportalPass = zportalButton = null;
     }
+    // Inspected Gportal page contains login, registration, reset and binding
+    // forms together. Never let another password form receive login credentials.
+    gportalForm = /^\/gportal(?:\/|$)/.test(location.pathname) ? document.querySelector('form#frmLogin') : null;
+    if (gportalForm) {
+      gportalUser = gportalForm.querySelector('input#first_name[type="text"]');
+      gportalPass = gportalForm.querySelector('input#first_password[type="password"]');
+      if (!editable(gportalUser) || !editable(gportalPass) || gportalUser.form !== gportalForm || gportalPass.form !== gportalForm)
+        return 'missing-fields';
+      const button = gportalForm.querySelector('input#first_button[type="button"]');
+      gportalButton = button && /^\s*(?:javascript\s*:\s*)?login\s*\(\s*\)\s*;?\s*$/.test(button.getAttribute('onclick') || '') ? button : null;
+    }
     pass = cfg.passwordSelector ? document.querySelector(cfg.passwordSelector) :
-      portalPass || zportalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
+      gportalForm ? gportalPass : portalPass || zportalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
     const root = pass && pass.form ? pass.form : document;
-    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : portalUser || zportalUser ||
+    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : gportalForm ? gportalUser : portalUser || zportalUser ||
       [...root.querySelectorAll('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')]
       .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
     if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
@@ -79,12 +90,22 @@
     accountButton = accountCandidate &&
       /^\s*checkForm\s*\(\s*\)\s*;?\s*$/.test(accountCandidate.getAttribute('onclick') || '') &&
       (accountCandidate.textContent || '').trim() === '立即登录' ? accountCandidate : null;
-    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : portalButton || zportalButton || accountButton ||
+    // User-confirmed 陕西国防工业职业技术学院 login control. Keep the
+    // original click handler, scoped to the selected credential form.
+    const idButtons = [...root.querySelectorAll('[id="submit"]')].filter(e =>
+      visible(e) && !e.closest('[hidden],[inert],[aria-disabled="true"]') &&
+      !['hidden','collapse'].includes(getComputedStyle(e).visibility) &&
+      (!e.form || e.form === pass.form) &&
+      e.matches('button:not([type="reset"]),input[type="submit"],input[type="button"],a,[role="button"],[onclick]') && e.type !== 'reset');
+    const idSubmit = idButtons.length === 1 ? idButtons[0] : null;
+    // A rejected known account button must not bypass its handler check via generic text matching.
+    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : gportalForm ? gportalButton : portalButton || zportalButton || accountButton || idSubmit ||
       [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
-        .find(e => e.type === 'submit' || /^(登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim()));
+        .find(e => e !== accountCandidate && e.id !== 'submit' && (e.type === 'submit' || /^(立即登录|立即登陆|登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim())));
   } catch (_) { return 'invalid-selector'; }
   if (!available(user) || !available(pass)) return 'missing-fields';
   /*CAMPUS_ACCOUNT*/
+  /*CAMPUS_GPORTAL*/
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
   for (const [input, value] of [[user,cfg.username],[pass,cfg.password]]) {
     if (input === portalPass && portalButton?.id === 'login_btn' && visible(tipFor(input))) tipFor(input).click();
@@ -256,6 +277,13 @@
       user.value !== cfg.username || pass.value !== cfg.password) return 'missing-fields';
   /*CAMPUS_CAPTCHA*/
   if (!cfg.submit) return 'filled';
+  if (gportalForm) {
+    const agreement = document.querySelector('#serverAgreement');
+    const protocol = document.querySelector('#login-protocol');
+    if (protocol && typeof window.jQuery !== 'function') return 'waiting-ready';
+    if ((agreement && !agreement.checked) || (protocol && window.jQuery(protocol).data('selected') != 2))
+      return 'agreement-required';
+  }
   if (!visible(submit)) return 'missing-submit';
   if (submit === accountButton && typeof window.checkForm !== 'function') return 'waiting-ready';
   if (portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
@@ -321,6 +349,10 @@
   }
   window.__campusSubmitted = true;
   submit.click();
+  if (gportalForm && window.__campusSubmitAttempt?.gportalObserved && !window.__campusSubmitAttempt.gportalRequestStarted) {
+    window.__campusSubmitAttempt.failed = true;
+    return 'submission-unconfirmed';
+  }
   if (submit === accountButton && window.__campusSubmitAttempt?.accountObserved && !window.__campusSubmitAttempt.accountRequestStarted) {
     window.__campusSubmitAttempt.failed = true;
     return 'submission-unconfirmed';

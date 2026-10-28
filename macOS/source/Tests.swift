@@ -312,7 +312,7 @@ import JavaScriptCore
           var pass = new HTMLInputElement('password','password');
           var submit = {type:'submit',disabled:false,getClientRects(){return [1]},click(){clicks++}};
           var document = {
-            querySelectorAll(s){if(s==='select'||s.startsWith('[role='))return [];if(s==='input[type="checkbox"],[role="checkbox"]')return [];if(s==='input[type="password"]')return [pass]; if(s.startsWith('button'))return [submit];return [user];},
+            querySelectorAll(s){if(s==='select'||s==='[id=\"submit\"]'||s.startsWith('[role='))return [];if(s==='input[type="checkbox"],[role="checkbox"]')return [];if(s==='input[type="password"]')return [pass]; if(s.startsWith('button'))return [submit];return [user];},
             querySelector(s){if(s==='[')throw Error('selector');if(s==='#username')return user;return null;}
           };
         """)

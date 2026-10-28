@@ -35,6 +35,10 @@ internal sealed partial class MainForm : Form
     private Task<CoreWebView2Environment>? browserEnvironment;
     private Task<(CampusProfile Profile, string Password)>? configurationLoad;
     private bool? online;
+    private string? detectedPortalUrl;
+    private int detectedPortalGeneration = -1;
+    private bool openingPortal;
+    private int portalOpenSerial;
     private DateTimeOffset lastInternetCheck = DateTimeOffset.MinValue;
     private DateTimeOffset lastWifiScan = DateTimeOffset.MinValue;
     private int generation;
@@ -84,11 +88,14 @@ internal sealed partial class MainForm : Form
             if (IsDisposed || !ReferenceEquals(portal.CurrentProblem, problem)) return;
             RestoreWindow();
             Navigate("portal");
-            using var guide = new PortalProblemDialog(problem);
-            if (guide.ShowDialog(this) == DialogResult.OK) {
-                Navigate("settings");
-                Post(new { kind = "guide", field = problem.SettingsField });
-            }
+            using var guide = new PortalProblemDialog(problem, () => ReferenceEquals(portal.CurrentProblem, problem));
+            portal.ProblemCleared += guide.Dismiss;
+            try {
+                if (guide.ShowDialog(this) == DialogResult.OK && ReferenceEquals(portal.CurrentProblem, problem)) {
+                    Navigate("settings");
+                    Post(new { kind = "guide", field = problem.SettingsField });
+                }
+            } finally { portal.ProblemCleared -= guide.Dismiss; }
         }));
         portal.CaptchaRequired += () => { Navigate("portal"); };
         portal.Submitted += async () => {
@@ -124,7 +131,7 @@ internal sealed partial class MainForm : Form
         Directory.CreateDirectory(LocalStore.DirectoryPath);
         if (browserEnvironment is { IsFaulted: true } or { IsCanceled: true }) browserEnvironment = null;
         return browserEnvironment ??= CoreWebView2Environment.CreateAsync(null,
-            Path.Combine(LocalStore.DirectoryPath, "WebView2"), new CoreWebView2EnvironmentOptions("--no-proxy-server"));
+            Path.Combine(LocalStore.DirectoryPath, "WebView2"), new CoreWebView2EnvironmentOptions(PortalBrowserPolicy.Arguments));
     }
 
     private async Task InitializeShellAsync()
@@ -531,7 +538,8 @@ internal sealed partial class MainForm : Form
             }
             var adapter = await CampusNetwork.ReadInterfaceAsync(activeProfile);
             if (expected != generation || IsDisposed) return;
-            var result = await Connectivity.CheckAsync(adapter);
+            var observation = await Connectivity.InspectAsync(adapter, checkPortal: activeProfile.UsesWebPortal);
+            var result = observation.Status;
             if (expected != generation || IsDisposed) return;
             connected = await CampusNetwork.IsAvailableAsync(activeProfile);
             if (expected != generation || IsDisposed) return;
@@ -540,12 +548,15 @@ internal sealed partial class MainForm : Form
                 Record("校园网络连接已变化，等待重新连接。"); return;
             }
             online = result == InternetStatus.Online;
+            detectedPortalUrl = observation.Portal.PortalUrl;
+            detectedPortalGeneration = generation;
             recovery.Observe(result);
             if (result == InternetStatus.Online) { portal.ConfirmInternetAccess(); status = ""; }
             else portal.ReportInternetUnavailable();
-            if (result != InternetStatus.Online) Record("未连接成功，等待恢复校园网络。");
+            if (result != InternetStatus.Online) Record(observation.Portal.State == PortalProbeState.Captive
+                ? "当前网络仍要求网页认证，正在等待或继续校园登录。" : "未连接成功，等待恢复校园网络。");
             if (recovery.ShouldAuthenticate(saved.Automatic, saved.UsesWebPortal, DateTimeOffset.UtcNow,
-                requiresInteraction: portal.RequiresInteraction, authenticating: portal.IsAuthenticating, retryNotBefore: portal.RetryNotBefore)) {
+                requiresInteraction: portal.RequiresInteraction, authenticating: openingPortal || portal.IsAuthenticating, retryNotBefore: portal.RetryNotBefore)) {
                 Record("未连接成功，正在重新查找目标网络并登录…");
                 if (!activeProfile.IsWired) {
                     var snapshot = await WifiService.ReadSnapshotAsync(activeProfile.Ssid, scan: true, waitForScan: false);
@@ -570,17 +581,35 @@ internal sealed partial class MainForm : Form
     }
     private void StopAuthentication()
     {
+        portalOpenSerial++; openingPortal = false;
         portal.Stop();
     }
     private async Task OpenPortalAsync(bool discover = false, bool showPage = true)
     {
         if (saved.UsesSystemAuthentication) { Record("当前使用系统认证，请在网络概览点击立即连接。"); return; }
         if (!saved.UsesWebPortal && !discover) { Record("网页认证已关闭，请在设置中开启并保存。"); return; }
-        recovery.Begin(DateTimeOffset.UtcNow);
-        if (showPage) Navigate("portal");
-        await portal.OpenAsync(saved, savedPassword, discover);
-        UpdatePortalVisibility(); PushState();
+        if (openingPortal) return;
+        openingPortal = true;
+        var serial = ++portalOpenSerial;
+        try {
+            var expected = generation;
+            recovery.Begin(DateTimeOffset.UtcNow);
+            if (showPage) Navigate("portal");
+            if (!discover && detectedPortalGeneration != expected && await CampusNetwork.IsAvailableAsync(saved)) {
+                var probe = await Connectivity.ProbePortalAsync();
+                if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
+                detectedPortalUrl = probe.PortalUrl; detectedPortalGeneration = expected;
+            }
+            if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
+            // Live entry is scoped to this attempt; keep all saved profile fields.
+            var active = !discover && detectedPortalGeneration == expected && detectedPortalUrl is { } entry && CampusProfile.Origin(entry) is not null
+                ? saved with { PortalUrl = entry } : saved;
+            await portal.OpenAsync(active, savedPassword, discover);
+            if (serial != portalOpenSerial || IsDisposed) return;
+            UpdatePortalVisibility(); PushState();
+        } finally { if (serial == portalOpenSerial) openingPortal = false; }
     }
+
     private static void OpenSettings(string uri) => Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
     private void RestoreWindow() {
         ShowInTaskbar = true; Show(); WindowState = FormWindowState.Normal; Activate();

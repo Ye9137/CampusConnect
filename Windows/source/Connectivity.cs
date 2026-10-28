@@ -1,21 +1,92 @@
 using System.Net.NetworkInformation;
+using System.Net;
+using System.Net.Http.Headers;
 
 namespace CampusConnect;
 
+internal enum PortalProbeState { Clear, Captive, Unknown }
+internal sealed record PortalProbe(PortalProbeState State, string? PortalUrl = null);
+internal sealed record ConnectivityObservation(InternetStatus Status, PortalProbe Portal);
+
 internal static class Connectivity
 {
+    private static readonly Uri ProbeAddress = new("http://www.msftconnecttest.com/connecttest.txt");
+    private static readonly HttpClient ProbeClient = new(new HttpClientHandler {
+        UseProxy = false, AllowAutoRedirect = false,
+        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+    }) { Timeout = Timeout.InfiniteTimeSpan };
+
     public static async Task<InternetStatus> CheckAsync(Guid? interfaceId)
+        => (await InspectAsync(interfaceId)).Status;
+
+    public static async Task<ConnectivityObservation> InspectAsync(Guid? interfaceId, bool checkPortal = true)
     {
-        if (interfaceId is null) return InternetStatus.Unavailable;
+        var unknown = new PortalProbe(PortalProbeState.Unknown);
+        if (interfaceId is null) return new(InternetStatus.Unavailable, unknown);
         try {
             if (!NetworkInterface.GetAllNetworkInterfaces().Any(n =>
                 Guid.TryParse(n.Id, out var id) && id == interfaceId && n.OperationalStatus == OperationalStatus.Up))
-                return InternetStatus.Unavailable;
-            // Like the system ping command, ICMP uses the current system route.
+                return new(InternetStatus.Unavailable, unknown);
+            // Both probes use the system route. A campus gateway may allow ICMP
+            // before login, so an explicit captive HTTP result overrides ping.
             using var ping = new Ping();
-            return await CheckWithPingAsync(async () => (await ping.SendPingAsync("www.baidu.com", 3000)).Status);
-        } catch (NetworkInformationException) { return InternetStatus.Unavailable; }
+            return await CheckWithPortalAsync(
+                async () => (await ping.SendPingAsync("www.baidu.com", 3000)).Status,
+                checkPortal ? ProbePortalAsync : () => Task.FromResult(unknown));
+        } catch (NetworkInformationException) { return new(InternetStatus.Unavailable, unknown); }
     }
+
+    internal static async Task<ConnectivityObservation> CheckWithPortalAsync(
+        Func<Task<IPStatus>> ping, Func<Task<PortalProbe>> portal, TimeSpan? timeout = null)
+    {
+        var pingTask = CheckWithPingAsync(ping, timeout);
+        async Task<PortalProbe> ReadPortal() {
+            try { return await portal().WaitAsync(timeout ?? TimeSpan.FromSeconds(5)); }
+            catch { return new(PortalProbeState.Unknown); }
+        }
+        var portalTask = ReadPortal();
+        await Task.WhenAll(pingTask, portalTask);
+        var result = await portalTask;
+        return new(result.State == PortalProbeState.Captive ? InternetStatus.Unavailable : await pingTask, result);
+    }
+
+    internal static PortalProbe ClassifyPortalResponse(int status, Uri address, Uri? location, string body)
+    {
+        if (status is 301 or 302 or 303 or 307 or 308) {
+            Uri? destination = location is null ? null : location.IsAbsoluteUri ? location : new Uri(address, location);
+            var url = destination is not null && CampusProfile.Origin(destination.AbsoluteUri) is not null
+                ? destination.AbsoluteUri : null;
+            return new(PortalProbeState.Captive, url);
+        }
+        if (status == 511) return new(PortalProbeState.Captive);
+        if (status != 200) return new(PortalProbeState.Unknown);
+        return new(body.Trim() == "Microsoft Connect Test" ? PortalProbeState.Clear : PortalProbeState.Captive);
+    }
+
+    internal static async Task<PortalProbe> ProbePortalAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        try {
+            using var request = new HttpRequestMessage(HttpMethod.Get, ProbeAddress);
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+            using var response = await ProbeClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            string body = "";
+            if (response.StatusCode == HttpStatusCode.OK) {
+                await using var content = await response.Content.ReadAsStreamAsync(timeout.Token);
+                var bytes = new byte[512]; var size = 0;
+                while (size < bytes.Length) {
+                    var count = await content.ReadAsync(bytes.AsMemory(size), timeout.Token);
+                    if (count == 0) break;
+                    size += count;
+                }
+                body = System.Text.Encoding.UTF8.GetString(bytes, 0, size);
+            }
+            return ClassifyPortalResponse((int)response.StatusCode, ProbeAddress, response.Headers.Location, body);
+        } catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException) {
+            return new(PortalProbeState.Unknown);
+        }
+    }
+
     internal static async Task<InternetStatus> CheckWithPingAsync(Func<Task<IPStatus>> send, TimeSpan? timeout = null)
     {
         try {

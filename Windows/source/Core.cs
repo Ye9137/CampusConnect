@@ -46,7 +46,7 @@ internal sealed record PortalProblem(string Code, string Title, string Summary, 
 internal sealed class PortalProblemGate
 {
     public PortalProblem? Current { get; private set; }
-    public PortalProblem? Report(string code, string? serviceOption = null)
+    public PortalProblem? Report(string code, string? serviceOption = null, string? loadDetail = null)
     {
         if (Current is not null) return null;
         var problem = PortalProblem.From(code);
@@ -54,6 +54,8 @@ internal sealed class PortalProblemGate
             var safe = string.Concat(serviceOption.Where(c => !char.IsControl(c))).Trim();
             problem = problem with { Summary = problem.Summary + "\n填写的服务选项：" + safe[..Math.Min(safe.Length, 80)] };
         }
+        if (problem?.Code == "load-failed" && !string.IsNullOrWhiteSpace(loadDetail))
+            problem = problem with { Summary = loadDetail + " 已暂停自动重试。" };
         return Current = problem;
     }
     public void Reset() => Current = null;
@@ -277,12 +279,18 @@ public static class PortalScript
               users.find(e => /user|account|student|phone|login|用户名|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' '))) || users[0];
             const zportalSubmit = pass?.form?.id === 'login_form' && pass.id === 'password' && user?.id === 'user_name'
               ? pass.form.querySelector('button#login_submit[type="button"]') : null;
+            const idButtons = [...root.querySelectorAll('[id="submit"]')].filter(e =>
+              visible(e) && !e.closest('[hidden],[inert],[aria-disabled="true"]') &&
+              !['hidden','collapse'].includes(getComputedStyle(e).visibility) &&
+              (!e.form || e.form === pass.form) &&
+              e.matches('button:not([type="reset"]),input[type="submit"],input[type="button"],a,[role="button"],[onclick]') && e.type !== 'reset');
+            const idSubmit = idButtons.length === 1 ? idButtons[0] : null;
             submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : zportalSubmit ||
               (document.querySelector('#ps[name="psNum"]') && document.querySelector('#randomimage') &&
-                /checkform\s*\(/.test(document.querySelector('#login_btn')?.getAttribute('onclick') || '') ? document.querySelector('#login_btn') : null) ||
+                /checkform\s*\(/.test(document.querySelector('#login_btn')?.getAttribute('onclick') || '') ? document.querySelector('#login_btn') : null) || idSubmit ||
               [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')]
-              .filter(e => e.getClientRects().length > 0).find(e => e.type === 'submit' ||
-                /^(登录|登陆|认证|连接|login|signin|connect)$/i.test((e.innerText || e.value || '').replace(/\s+/g,'')));
+              .filter(e => e.getClientRects().length > 0).find(e => e.id !== 'submit' && (e.type === 'submit' ||
+                /^(登录|登陆|认证|连接|login|signin|connect)$/i.test((e.innerText || e.value || '').replace(/\s+/g,''))));
           } catch (_) { return 'invalid-selector'; }
           if (!editable(user) || !editable(pass) || !visible(user) || !visible(pass) || !user.value || !pass.value) return 'missing-fields';
           /*CAPTCHA*/
@@ -311,8 +319,12 @@ public static class PortalScript
         using var accountStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalAccount.js")
             ?? throw new InvalidOperationException("缺少账号认证脚本。");
         using var accountReader = new StreamReader(accountStream);
+        using var gportalStream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalGportal.js")
+            ?? throw new InvalidOperationException("缺少 Gportal 认证脚本。");
+        using var gportalReader = new StreamReader(gportalStream);
         var script = reader.ReadToEnd().Replace("/*CAMPUS_CONFIG*/", payload, StringComparison.Ordinal)
             .Replace("  /*CAMPUS_ACCOUNT*/", accountReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
+            .Replace("  /*CAMPUS_GPORTAL*/", gportalReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_CAPTCHA*/", captchaReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal)
             .Replace("  /*CAMPUS_AGREEMENTS*/", agreementReader.ReadToEnd().TrimEnd(), StringComparison.Ordinal);
         return InContext(profile, script, "'wrong-origin'");

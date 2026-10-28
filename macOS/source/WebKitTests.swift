@@ -82,6 +82,45 @@ import WebKit
         }
         return result
     }
+    func addedSchoolChecks() async throws {
+        let form = "<form><input name='username'><input type='password'><button type='button' id='submit' onclick='window.clicks++'>➜</button></form><script>window.clicks=0</script>"
+        try await load(html: form)
+        try expect(try await fill() == "submitted", "陕西国防 #submit original button clicked")
+        try expect(try await js("clicks") as? Int == 1, "school button submits once")
+        try expect(try await fill() == "already-submitted", "school button deduplicates")
+        try await load(html: form)
+        try expect(try await fill(submit: false) == "filled", "school manual fill preserves no-submit mode")
+        try expect(try await js("clicks") as? Int == 0, "manual fill never clicks")
+        try await load(html: form.replacingOccurrences(of: "id='submit'", with: "id='submit' disabled"))
+        try expect(try await fill() == "missing-submit", "disabled school button is not clicked")
+        let isolated = "<form><button type='button' id='submit' onclick='window.clicks++'>➜</button></form><form><input name='username'><input type='password'></form><script>window.clicks=0</script>"
+        try await load(html: isolated)
+        try expect(try await fill() == "missing-submit", "other form submit is excluded")
+        let project = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let jquery = try String(contentsOf: project.appendingPathComponent("Windows/tests/node_modules/jquery/dist/jquery.min.js"), encoding: .utf8)
+        let original = try String(contentsOf: project.appendingPathComponent("Windows/tests/fixtures/gportal-login-handler.js"), encoding: .utf8)
+        let html = #"""
+        <form id="frmReg"><input name="name" id="register_name"><input type="password"></form>
+        <form id="frmLogin"><input type="hidden" id="iv" name="iv" value="fixture-iv"><input type="hidden" name="sign" value="fixture-session"><input type="hidden" id="redirectUrl" value="/done"><input id="first_name" name="name" type="text"><input id="first_password" name="password" type="password"><input type="button" id="first_button" value="登&nbsp;录" onclick="javascript:login()"></form>
+        """#
+        let setup = #"""
+        window.requests=0;window.encryptCalls=0;window.reply={status:1,info:'fixture-ok',data:{redirectUrl:'/done'}};window.CryptoJS={AES:{encrypt(){}}};function cryptoEncode(s){encryptCalls++;window.serialized=s;return {data:'fixture-ciphertext'}}function showWait(){}function closeWait(){}function showmessage(){}function offlinepage(){}function resetpage(){}function bindpage(){};$.ajaxTransport('+*',options=>({send(_headers,done){requests++;done(200,'OK',{text:JSON.stringify(reply)},'Content-Type: application/json')},abort(){}}));
+        """#
+        let page = html + "<script>" + jquery + "</script><script>" + setup + "</script><script>" + original + "</script>"
+        let url = "http://portal.test/gportal/web/index"
+        var profile = CampusProfile(); profile.portalURL = url; profile.username = "dummy-user"; profile.autoSubmit = true
+        let script = try PortalScript.build(profile: profile, password: "dummy-password")
+        try await load(html: page, baseURL: url)
+        try expect(try await js(script) as? String == "submitted", "Gportal NBSP button uses original login")
+        try expect(try await js("requests") as? Int == 1, "original Gportal request observed")
+        try expect(try await js("encryptCalls") as? Int == 1, "original Gportal encryption entry retained")
+        try expect(try await js("document.getElementById('register_name').value") as? String == "", "Gportal registration remains blank")
+        try expect(try await js(script) as? String == "authenticated", "Gportal success observed")
+        try await load(html: page, baseURL: url)
+        try await js("reply={status:0,info:'fixture-reject',data:{}}; true")
+        try expect(try await js(script) as? String == "submitted", "Gportal rejection uses original request")
+        try expect(try await js(script) as? String == "authentication-rejected", "Gportal rejection pauses repeat submission")
+    }
     func accountPortalChecks() async throws {
         let project = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let html = try String(contentsOf: project.appendingPathComponent("Windows/tests/fixtures/haust-account.html"), encoding: .utf8)
@@ -430,6 +469,7 @@ import WebKit
         try await js("document.body.insertAdjacentHTML('beforeend', '<span id=terms role=checkbox aria-required=true aria-checked=false tabindex=0>同意协议</span>');document.getElementById('terms').onclick=function(){this.setAttribute('aria-checked','true')};true")
         try expect(try await pump() == "submitted", "ARIA checkbox handled natively")
         try expect(try await js("document.getElementById('terms').getAttribute('aria-checked')") as? String == "true", "ARIA terms confirmed")
+        try await addedSchoolChecks()
         try await accountPortalChecks()
         print("PASS: \(checks) native WKWebView checks (first click, handler readiness, asynchronous handoff, deduplication, manual mode, origin and service selection).")
     }

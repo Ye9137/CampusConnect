@@ -9,6 +9,7 @@ internal sealed class PortalController
     public WebView2 View { get; private set; } = new() { Dock = DockStyle.Fill };
     public event Action<string>? Status;
     public event Action<PortalProblem>? Problem;
+    public event Action? ProblemCleared;
     private readonly PortalProblemGate problemGate = new();
     public PortalProblem? CurrentProblem => problemGate.Current;
     public event Action? Submitted;
@@ -54,8 +55,16 @@ internal sealed class PortalController
         this.campusConnected = campusConnected ?? CampusNetwork.IsAvailableAsync;
     }
 
+    private void ClearProblem()
+    {
+        problemGate.Reset();
+        ProblemCleared?.Invoke();
+    }
+
     private void Fail(string code, string message)
     {
+        // A completed login may still be loading an optional landing page.
+        if (internetConfirmed) return;
         generation++;
         var decision = PortalRetryPolicy.AfterFailure(code, profile?.Automatic == true && !discovering,
             profile?.AutoSubmit == true, DateTimeOffset.UtcNow);
@@ -64,7 +73,7 @@ internal sealed class PortalController
         Status?.Invoke(message + (RetryNotBefore is not null
             ? " 将先复查联网状态，等待至少 5 秒后继续自动重试。" : ""));
         // Automatic transient retries must not repeatedly open modal dialogs.
-        if (RequiresInteraction && problemGate.Report(PortalRetryPolicy.ProblemCode(code), profile?.ServiceOption) is { } problem) Problem?.Invoke(problem);
+        if (RequiresInteraction && problemGate.Report(PortalRetryPolicy.ProblemCode(code), profile?.ServiceOption, code == "load-failed" ? message : null) is { } problem) Problem?.Invoke(problem);
     }
 
     private async Task InitializeAsync()
@@ -75,7 +84,8 @@ internal sealed class PortalController
         var environment = await getEnvironment();
         if (view != View || view.IsDisposed) return;
         var options = environment.CreateCoreWebView2ControllerOptions();
-        options.IsInPrivateModeEnabled = true;
+        options.ProfileName = PortalBrowserPolicy.ProfileName;
+        options.IsInPrivateModeEnabled = false;
         await view.EnsureCoreWebView2Async(environment, options);
         if (view != View || view.IsDisposed) return;
         view.CoreWebView2.ProcessFailed += (_, e) => {
@@ -106,12 +116,12 @@ internal sealed class PortalController
         View.CoreWebView2.ContentLoading += async (_, _) => await TryFillAsync();
         View.CoreWebView2.DOMContentLoaded += async (_, _) => await TryFillAsync();
         View.CoreWebView2.NavigationCompleted += async (_, e) => {
-            if (profile is null || e.NavigationId != navigationId) return;
+            if (profile is null || internetConfirmed || e.NavigationId != navigationId) return;
             if (!e.IsSuccess || e.HttpStatusCode >= 400) {
                 if (e.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled) return;
                 var temporary = PortalRetryPolicy.IsTemporaryNavigationFailure(e.HttpStatusCode, e.WebErrorStatus.ToString());
                 Fail(temporary ? "load-temporary" : "load-failed", e.HttpStatusCode >= 400
-                    ? $"学校认证服务器返回 HTTP {e.HttpStatusCode}。" : "认证页加载失败，请检查校园网络和认证地址。"); return;
+                    ? $"学校认证服务器返回 HTTP {e.HttpStatusCode}。" : $"认证页加载失败（WebView2：{e.WebErrorStatus}），请检查校园网络和认证地址。"); return;
             }
             if (authenticationDeadline != null) await ObserveAuthenticationAsync();
             else {
@@ -188,7 +198,8 @@ internal sealed class PortalController
     private string BootstrapFor(CampusProfile active) => bootstrapSource.Replace("/*CAMPUS_ORIGIN*/", JsonSerializer.Serialize(CampusProfile.Origin(active.PortalUrl)));
     public void ConfirmInternetAccess()
     {
-        problemGate.Reset();
+        if (!internetConfirmed) generation++;
+        ClearProblem();
         internetConfirmed = true; RequiresInteraction = false; RetryNotBefore = null;
         authenticationDeadline = null; finished = true; continueAfterNavigation = false; password = "";
         Status?.Invoke("已经连接成功");
@@ -207,7 +218,7 @@ internal sealed class PortalController
     public void ResetBrowser()
     {
         var waitingForUser = RequiresInteraction && authenticationDeadline is null;
-        problemGate.Reset();
+        ClearProblem();
         generation++;
         profile = null; password = ""; finished = false; continueAfterNavigation = false; IsActive = false;
         redirectSession = null;
@@ -224,7 +235,7 @@ internal sealed class PortalController
     }
     public void Stop(bool clearView = true)
     {
-        problemGate.Reset();
+        ClearProblem();
         generation++;
         profile = null; password = ""; finished = false; continueAfterNavigation = false; authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false;
         redirectSession = null;
@@ -254,7 +265,7 @@ internal sealed class PortalController
     private void ConfirmAuthentication()
     {
         if (authenticationConfirmed) return;
-        problemGate.Reset();
+        ClearProblem();
         authenticationConfirmed = true; authenticationDeadline = null;
         finished = true; continueAfterNavigation = false; password = ""; RequiresInteraction = false; RetryNotBefore = null;
         if (!internetConfirmed) Status?.Invoke("学校已确认登录成功，正在检查实际联网状态。");

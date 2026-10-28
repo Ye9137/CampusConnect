@@ -10,6 +10,12 @@ void Invalid(CampusProfile profile) {
     throw new Exception("Invalid profile accepted.");
 }
 PortalRedirectTests.Run(Expect);
+var loadGate = new PortalProblemGate();
+Expect(loadGate.Report("load-failed", loadDetail: "学校认证服务器返回 HTTP 404。")?.Summary.Contains("HTTP 404") == true,
+    "navigation guidance retains the concrete HTTP error");
+loadGate.Reset();
+Expect(loadGate.Report("load-failed", loadDetail: "认证页加载失败（WebView2：RedirectFailed）。")?.Summary.Contains("RedirectFailed") == true,
+    "navigation guidance retains the concrete WebView2 error");
 Expect(PortalProblem.IsAuthenticationRejected("authentication-rejected:E20027"), "school error identifier is a rejection");
 Expect(PortalProblem.AuthenticationMessage("authentication-rejected:E20027").Contains("E20027"), "school error identifier remains visible");
 Expect(!PortalProblem.AuthenticationMessage("authentication-rejected:dummy-password").Contains("dummy-password"), "untrusted message is excluded");
@@ -39,6 +45,29 @@ foreach (var code in new[] { "wrong-origin", "service-required", "authentication
 Expect(!DesktopBridge.ControlsBusy(true, true), "background poll keeps every control usable");
 Expect(!DesktopBridge.ControlsBusy(false, false), "idle controls remain usable");
 Expect(DesktopBridge.ControlsBusy(true, false), "explicit scan and connect retain the operation lock");
+if (args.Length == 2 && args[0] == "--submit-id-fixture") {
+    var submitIdProfile = new CampusProfile { PortalUrl = "http://submit-id.test/login", Username = "fixture-user", AutoSubmit = true };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        fill = PortalScript.Build(submitIdProfile, "fixture-secret"),
+        manual = PortalScript.Build(submitIdProfile with { AutoSubmit = false }, "fixture-secret"),
+        captcha = PortalScript.BuildCaptchaProbe(submitIdProfile),
+        commit = PortalScript.InContext(submitIdProfile, "window.__campusCaptcha?.commit(window.__campusCaptcha.ticket, 'aB7Z') ?? 'captcha-stale'", "'captcha-stale'")
+    }));
+    Console.WriteLine("PASS: submit-ID fixture generated from production embedded resources."); return;
+}
+if (args.Length == 2 && args[0] == "--gportal-fixture") {
+    var gportalProfile = new CampusProfile { PortalUrl = "http://gportal.test/gportal/web/index?fixture=1", Username = "fixture-user", AutoSubmit = true };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        fill = PortalScript.Build(gportalProfile, "fixture-secret"),
+        manual = PortalScript.Build(gportalProfile with { AutoSubmit = false }, "fixture-secret"),
+        status = PortalScript.Build(gportalProfile, "", statusOnly: true)
+    }));
+    Console.WriteLine("PASS: Gportal fixture generated from production embedded resources."); return;
+}
+if (args.Length == 2 && args[0] == "--browser-policy-fixture") {
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new { profileName = PortalBrowserPolicy.ProfileName, arguments = PortalBrowserPolicy.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries) }));
+    Console.WriteLine("PASS: browser policy fixture generated from production options."); return;
+}
 if (args.Length == 2 && args[0] == "--frame-fixture") {
     var frameProfile = new CampusProfile { PortalUrl = "http://portal.test", Username = "dummy-user", AutoSubmit = true };
     File.WriteAllText(args[1], JsonSerializer.Serialize(new {
@@ -353,4 +382,27 @@ foreach (var status in new[] { System.Net.NetworkInformation.IPStatus.TimedOut, 
 Expect(await Connectivity.CheckWithPingAsync(() => throw new System.Net.NetworkInformation.PingException("fixture")) == InternetStatus.Unavailable, "ping error is offline");
 Expect(await Connectivity.CheckWithPingAsync(() => throw new System.Net.Sockets.SocketException()) == InternetStatus.Unavailable, "DNS error is offline");
 Expect(await Connectivity.CheckWithPingAsync(() => new TaskCompletionSource<System.Net.NetworkInformation.IPStatus>().Task, TimeSpan.FromMilliseconds(20)) == InternetStatus.Unavailable, "hung DNS/ping has a deadline");
+// Regression from the supplied capture: ICMP succeeds while HTTP is redirected
+// to a school login page and rad_user_info says not_online_error.
+var probeAddress = new Uri("http://www.msftconnecttest.com/connecttest.txt");
+var intercepted = Connectivity.ClassifyPortalResponse(307, probeAddress, new Uri("http://portal.test/"), "");
+var captiveObservation = await Connectivity.CheckWithPortalAsync(
+    () => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => Task.FromResult(intercepted));
+Expect(captiveObservation.Status == InternetStatus.Unavailable && captiveObservation.Portal.PortalUrl == "http://portal.test/", "a pingable captive network never clears the login attempt");
+var captiveRecovery = new PortalRecovery(); captiveRecovery.Observe(captiveObservation.Status);
+Expect(captiveRecovery.ShouldAuthenticate(true, true, now), "ping-positive captive network still opens and fills the school page");
+foreach (var redirectStatus in new[] { 301,302,303,307,308 })
+    Expect(Connectivity.ClassifyPortalResponse(redirectStatus, probeAddress, new Uri("http://school.test:8080/entry?ticket=fixture"), "").PortalUrl == "http://school.test:8080/entry?ticket=fixture", "live portal retains port and query");
+Expect(Connectivity.ClassifyPortalResponse(302, probeAddress, new Uri("/login", UriKind.Relative), "").PortalUrl == "http://www.msftconnecttest.com/login", "relative login redirect resolves against probe address");
+Expect(Connectivity.ClassifyPortalResponse(200, probeAddress, null, "Microsoft Connect Test\r\n").State == PortalProbeState.Clear, "expected probe body is clear");
+Expect(Connectivity.ClassifyPortalResponse(200, probeAddress, null, "<html>School login</html>").State == PortalProbeState.Captive, "HTTP 200 login replacement is captive");
+Expect(Connectivity.ClassifyPortalResponse(511, probeAddress, null, "").State == PortalProbeState.Captive, "HTTP 511 is captive");
+foreach (var code in new[] { 404,500,503 }) Expect(Connectivity.ClassifyPortalResponse(code, probeAddress, null, "").State == PortalProbeState.Unknown, "probe server outage is not invented as a captive portal");
+foreach (var dest in new[] { "javascript:alert(1)", "file:///C:/login", "http://user:secret@school.test/" })
+    Expect(Connectivity.ClassifyPortalResponse(302, probeAddress, new Uri(dest), "").PortalUrl is null, "only credential-free web entries are used");
+var clearProbe = new PortalProbe(PortalProbeState.Clear);
+Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => Task.FromResult(clearProbe))).Status == InternetStatus.Online, "real ping and clear HTTP remain online");
+Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.TimedOut), () => Task.FromResult(clearProbe))).Status == InternetStatus.Unavailable, "existing failed-ping behavior is retained");
+Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => throw new System.Net.Http.HttpRequestException("fixture"))).Status == InternetStatus.Online, "unreachable probe service alone does not reject good ping");
+Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => new TaskCompletionSource<PortalProbe>().Task, TimeSpan.FromMilliseconds(20))).Status == InternetStatus.Online, "hung HTTP probe is bounded and does not freeze the UI");
 Console.WriteLine($"PASS: {checks} checks (validation, ping, retry policy, native ABI, XML, credentials).");
