@@ -45,6 +45,18 @@ foreach (var code in new[] { "wrong-origin", "service-required", "authentication
 Expect(!DesktopBridge.ControlsBusy(true, true), "background poll keeps every control usable");
 Expect(!DesktopBridge.ControlsBusy(false, false), "idle controls remain usable");
 Expect(DesktopBridge.ControlsBusy(true, false), "explicit scan and connect retain the operation lock");
+if (args.Length == 2 && args[0] == "--xju-fixture") {
+    var xjuProfile = new CampusProfile { PortalUrl = "http://xju.test/account", Username = "fixture-user", AutoSubmit = true, ServiceOption = "中国联通" };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        fill = PortalScript.Build(xjuProfile, "fixture-secret"),
+        manual = PortalScript.Build(xjuProfile with { AutoSubmit = false }, "fixture-secret"),
+        noService = PortalScript.Build(xjuProfile with { ServiceOption = "" }, "fixture-secret"),
+        wrongService = PortalScript.Build(xjuProfile with { ServiceOption = "中国移动" }, "fixture-secret"),
+        wrongOrigin = PortalScript.Build(xjuProfile with { PortalUrl = "http://foreign.test" }, "fixture-secret"),
+        commit = PortalScript.InContext(xjuProfile, "window.__campusCaptcha?.commit(window.__campusCaptcha.ticket, 'aB7Z') ?? 'captcha-stale'", "'captcha-stale'")
+    }));
+    Console.WriteLine("PASS: XJU fixture generated from production embedded resources."); return;
+}
 if (args.Length == 2 && args[0] == "--submit-id-fixture") {
     var submitIdProfile = new CampusProfile { PortalUrl = "http://submit-id.test/login", Username = "fixture-user", AutoSubmit = true };
     File.WriteAllText(args[1], JsonSerializer.Serialize(new {

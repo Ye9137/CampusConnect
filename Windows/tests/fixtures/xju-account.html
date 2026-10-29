@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Offline account fixture</title></head><body>
+<!-- Minimal supplied DOM structure; no school IP, MAC, session or live bundles. -->
+<div class="panel panel-login">
+ <input type="text" id="username" class="input-box" placeholder="请输入账号">
+ <select class="domain" id="domain"><option value="0-@campus">请选择出口线路</option><option value="1-@cucc">中国联通</option></select>
+ <input type="password" id="password" class="input-box" placeholder="请输入密码">
+ <div class="panel-row panel-captcha" hidden><input type="text" id="captcha" placeholder="请输入验证码"><div class="captcha-img" id="captchaImg"></div></div>
+ <input type="checkbox" id="remember"><label for="remember">记住密码</label>
+ <button type="button" class="btn-login" id="login-account">登录</button>
+ <button type="button" id="self-service">自助服务</button>
+</div>
+<script>
+// Synthetic school handlers, not a replay of its authentication API or encryption.
+window.clicks=0;window.unrelated=0;window.changes=0;
+document.querySelector('#domain').addEventListener('change',()=>changes++);
+document.querySelector('#login-account').addEventListener('click',()=>{
+ clicks++;window.received=['username','password','domain','captcha'].map(id=>document.getElementById(id).value);
+});
+document.querySelector('#self-service').addEventListener('click',()=>unrelated++);
+</script></body></html>
