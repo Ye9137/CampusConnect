@@ -78,7 +78,7 @@ def main():
     switch = '/' if os.name == 'nt' else '-'
     command = [args.makensis, switch + 'INPUTCHARSET', 'UTF8', switch + 'V3', switch + 'WX']
     for key, value in {'PAYLOAD': payload, 'OUTPUT': output, 'DELETE_MANIFEST': manifest, 'INSTALL_MANIFEST': install_manifest,
-                       'BOOTSTRAPPER': bootstrapper, 'RUNTIME': args.runtime, 'VERSION': '2.2.1-preview.1', 'SIZE_KB': (size + 1023) // 1024}.items():
+                       'BOOTSTRAPPER': bootstrapper, 'RUNTIME': args.runtime, 'VERSION': '2.2.1', 'SIZE_KB': (size + 1023) // 1024}.items():
         command.append(switch + 'D' + key + '=' + str(value))
     command.append(str(directory / 'CampusConnect.nsi'))
     environment = os.environ.copy()

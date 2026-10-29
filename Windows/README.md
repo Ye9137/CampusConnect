@@ -1,5 +1,13 @@
 # Windows 版
 
+## 2.2.1 正式版
+
+[下载 Windows / macOS 2.2.1](https://github.com/Ye9137/CampusConnect/releases/latest) · [更新说明](2.2.1-更新说明.md)
+
+- 新增 **新疆大学**支持。
+- 修复登录按钮识别和出口线路选择。
+- 升级保留原有账号与设置。
+
 ## 2.2.0 正式版
 
 [下载 Windows / macOS 2.2.0](https://github.com/Ye9137/CampusConnect/releases/latest) · [更新说明](2.2.0-更新说明.md)

@@ -179,7 +179,28 @@ import WebKit
         try expect(try await waitStatus() == "authenticated", "native CAPTCHA flow success is observed")
         try expect(try await js("postData.captcha") as? String == "aB7Z", "native CAPTCHA case remains unchanged")
     }
+    func xjuChecks() async throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let html = try String(contentsOf: source.appendingPathComponent("../../Windows/tests/fixtures/xju-account.html"), encoding: .utf8)
+        try await load(html: html)
+        try expect(try await fill(service: "中国联通") == "submitted", "XJU original account button submits")
+        try expect(try await js("JSON.stringify(received)") as? String == "[\"dummy-user\",\"dummy-password\",\"1-@cucc\",\"\"]", "XJU original handler receives selected route and credentials")
+        try expect(try await js("changes") as? Int == 1, "XJU school route change event runs")
+        try expect(try await fill(service: "中国联通") == "already-submitted", "XJU submission deduplicates")
+        try await load(html: html)
+        try expect(try await fill() == "service-required", "XJU route placeholder pauses submission")
+        try expect(try await js("clicks") as? Int == 0, "XJU unselected route never clicks")
+        try expect(try await fill(submit: false, service: "中国联通") == "filled", "XJU manual mode fills and selects")
+        try expect(try await js("clicks") as? Int == 0, "XJU manual mode does not submit")
+        try await load(html: html)
+        try expect(try await fill(service: "中国移动") == "missing-service", "XJU unmatched route does not submit")
+        try await load(html: html)
+        try await js("document.querySelector('.panel-captcha').hidden=false; true")
+        try expect(try await fill(service: "中国联通") == "manual-required", "XJU visible challenge waits for input")
+        try expect(try await js("clicks") as? Int == 0, "XJU empty challenge never submits")
+    }
     func run() async throws {
+        try await xjuChecks()
         // Exact user-supplied button; the surrounding offline form is synthetic.
         let haustPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../Windows/tests/fixtures/haust-login.html")

@@ -472,6 +472,19 @@ enum PortalScript {
             accountButton = accountCandidate &&
               /^\\s*checkForm\\s*\\(\\s*\\)\\s*;?\\s*$/.test(accountCandidate.getAttribute('onclick') || '') &&
               (accountCandidate.textContent || '').trim() === '立即登录' ? accountCandidate : null;
+            // Inspected SRun pro account page binds its login handler from main.js.
+            // Match its credential panel and domain selector without relaxing the
+            // separate HAUST checkForm guard for the same button ID.
+            const domainPanel = accountCandidate?.closest('.panel-login');
+            const domainAccountButton = accountCandidate && !accountCandidate.hasAttribute('onclick') &&
+              accountCandidate.classList.contains('btn-login') &&
+              !accountCandidate.closest('[inert],[aria-disabled="true"]') &&
+              !['hidden','collapse'].includes(getComputedStyle(accountCandidate).visibility) &&
+              (accountCandidate.textContent || '').trim() === '登录' &&
+              domainPanel?.querySelector('input#username[type="text"]') === user &&
+              domainPanel?.querySelector('input#password[type="password"]') === pass &&
+              domainPanel?.querySelector('select#domain') ? accountCandidate : null;
+            if (domainAccountButton && document.readyState !== 'complete') return 'waiting-ready';
             // User-confirmed 陕西国防工业职业技术学院 login control. Keep the
             // original click handler, scoped to the selected credential form.
             const idButtons = [...root.querySelectorAll('[id="submit"]')].filter(e =>
@@ -480,7 +493,7 @@ enum PortalScript {
               (!e.form || e.form === pass.form) &&
               e.matches('button:not([type="reset"]),input[type="submit"],input[type="button"],a,[role="button"],[onclick]') && e.type !== 'reset');
             const idSubmit = idButtons.length === 1 ? idButtons[0] : null;
-            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : gportalForm ? gportalButton : portalButton || accountButton || idSubmit ||
+            submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : gportalForm ? gportalButton : portalButton || accountButton || domainAccountButton || idSubmit ||
               [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(visible)
                 .find(e => e !== accountCandidate && e.id !== 'submit' && (e.type === 'submit' || /^(立即登录|立即登陆|登录|登陆|认证|连接|login|log in|sign in|connect)(\\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim())));
           } catch (_) { return 'invalid-selector'; }
@@ -515,7 +528,7 @@ enum PortalScript {
           // Include unassociated controls, but never select a service in another form.
           const serviceSelects = [...document.querySelectorAll('select')]
             .filter(select => visible(select) && !select.multiple && (!select.form || select.form === pass.form));
-          const servicePlaceholder = text => /^(请)?选择((运营商|服务)(选项)?|选项)[：:….。]*$/.test((text || '').replace(/\\s/g, ''));
+          const servicePlaceholder = text => /^(请)?选择((运营商|服务)(选项)?|出口线路|选项)[：:….。]*$/.test((text || '').replace(/\\s/g, ''));
           const serviceText = control => (control instanceof HTMLInputElement ? control.value || control.placeholder : control.textContent || '').trim();
           const serviceDescriptor = control => [control.id, control.getAttribute('name'), control.getAttribute('aria-label'),
             control.getAttribute('aria-controls'), ...(control.getAttribute('aria-labelledby') || '').split(/\\s+/)
