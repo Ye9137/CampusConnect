@@ -14,13 +14,21 @@ foreach ($key in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
                   'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
     foreach ($entry in @(Get-ItemProperty $key -ErrorAction SilentlyContinue)) {
         if ($entry.DisplayName -notmatch '^Microsoft Windows Desktop Runtime - 10\.0\.\d+ \(x64\)$') { continue }
-        if ($entry.QuietUninstallString -notmatch '^"([^"]+\.exe)"\s+(.*)$') {
-            throw "Cannot silently remove Desktop Runtime: $($entry.DisplayName)"
+        if ($entry.WindowsInstaller -eq 1 -and $entry.PSChildName -match '^\{[0-9a-fA-F-]+\}$') {
+            # SDKs may register the Desktop MSI without a bundle quiet command.
+            $path = Join-Path $env:WINDIR 'System32\msiexec.exe'
+            $arguments = "/x $($entry.PSChildName) /qn /norestart"
+        } else {
+            $command = $entry.QuietUninstallString
+            if (-not $command) { $command = $entry.UninstallString }
+            if ($command -notmatch '^"([^"]+\.exe)"\s+(.*)$') {
+                throw "Cannot silently remove Desktop Runtime: $($entry.DisplayName); command: $command"
+            }
+            $path = $Matches[1]
+            $arguments = $Matches[2] + ' /quiet /norestart'
         }
-        $path = $Matches[1]
-        $arguments = $Matches[2] + ' /norestart'
         $process = Start-Process $path -ArgumentList $arguments -Wait -PassThru
-        if ($process.ExitCode -notin @(0, 3010)) { throw 'Desktop Runtime removal failed.' }
+        if ($process.ExitCode -notin @(0, 3010, 1605)) { throw "Desktop Runtime removal failed: $($process.ExitCode)" }
     }
 }
 # Hosted images also install SDK/runtime ZIPs without uninstall registration.
