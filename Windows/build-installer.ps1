@@ -15,5 +15,12 @@ $signature = Get-AuthenticodeSignature $bootstrapper
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
     throw 'Microsoft WebView2 bootstrapper signature verification failed.'
 }
-python (Join-Path $PSScriptRoot 'installer/build.py') --runtime $Runtime --makensis $makensis --bootstrapper $bootstrapper
+$desktopRuntime = Join-Path $dependencies "windowsdesktop-runtime-$Runtime.exe"
+python (Join-Path $PSScriptRoot 'installer/desktop_runtime.py') --runtime $Runtime --output $desktopRuntime
+if ($LASTEXITCODE -ne 0) { throw 'Desktop Runtime download or SHA512 verification failed.' }
+$signature = Get-AuthenticodeSignature $desktopRuntime
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+    throw 'Microsoft Desktop Runtime signature verification failed.'
+}
+python (Join-Path $PSScriptRoot 'installer/build.py') --runtime $Runtime --makensis $makensis --bootstrapper $bootstrapper --desktop-runtime $desktopRuntime
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }

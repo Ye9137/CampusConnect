@@ -90,6 +90,12 @@ jobs:
       - name: Build setup installer
         shell: pwsh
         run: ./Windows/build-installer.ps1 -Runtime ${{ matrix.runtime }}
+      - name: Test Desktop Runtime prerequisite decisions and failures
+        shell: powershell
+        run: ./Windows/installer/test-desktop-runtime.ps1 -RuntimeInstaller ./Windows/installer/dependencies/windowsdesktop-runtime-${{ matrix.runtime }}.exe
+      - name: Test setup on a machine without Desktop Runtime 10
+        shell: powershell
+        run: ./Windows/installer/test-clean-desktop-runtime.ps1 -Installer ./Windows/installer/dist/CampusConnect-Windows-${{ matrix.arch }}-Setup.exe
       - name: Test single-file startup, shortcuts, repair, upgrade and uninstall
         shell: pwsh
         run: ./Windows/installer/smoke-test.ps1 -Installer ./Windows/installer/dist/CampusConnect-Windows-${{ matrix.arch }}-Setup.exe

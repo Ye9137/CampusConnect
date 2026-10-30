@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+from desktop_runtime import verify as verify_desktop_runtime
 
 
 def quote_nsis(value):
@@ -50,6 +51,7 @@ def main():
     parser.add_argument('--runtime', choices=['win-x64', 'win-arm64'], default='win-x64')
     parser.add_argument('--makensis', default=shutil.which('makensis') or shutil.which('makensis.exe'))
     parser.add_argument('--bootstrapper', required=True)
+    parser.add_argument('--desktop-runtime', required=True)
     args = parser.parse_args()
     if not args.makensis:
         parser.error('NSIS is required; provide --makensis or add makensis to PATH.')
@@ -75,10 +77,13 @@ def main():
     bootstrapper = Path(args.bootstrapper).resolve()
     if not bootstrapper.is_file() or bootstrapper.read_bytes()[:2] != b'MZ':
         parser.error('The Microsoft WebView2 bootstrapper must be a Windows executable.')
+    desktop_runtime = Path(args.desktop_runtime).resolve()
+    verify_desktop_runtime(desktop_runtime, args.runtime)
     switch = '/' if os.name == 'nt' else '-'
     command = [args.makensis, switch + 'INPUTCHARSET', 'UTF8', switch + 'V3', switch + 'WX']
     for key, value in {'PAYLOAD': payload, 'OUTPUT': output, 'DELETE_MANIFEST': manifest, 'INSTALL_MANIFEST': install_manifest,
-                       'BOOTSTRAPPER': bootstrapper, 'RUNTIME': args.runtime, 'VERSION': '2.2.1', 'SIZE_KB': (size + 1023) // 1024}.items():
+                       'BOOTSTRAPPER': bootstrapper, 'DESKTOP_RUNTIME': desktop_runtime,
+                       'RUNTIME': args.runtime, 'VERSION': '2.2.2', 'SIZE_KB': (size + 1023) // 1024}.items():
         command.append(switch + 'D' + key + '=' + str(value))
     command.append(str(directory / 'CampusConnect.nsi'))
     environment = os.environ.copy()

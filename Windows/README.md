@@ -1,5 +1,11 @@
 # Windows 版
 
+## 2.2.2 Windows 安装包
+
+- 内置微软官方 .NET 10 桌面运行时离线安装包；缺少兼容版本时自动安装。
+- 已有兼容版本时跳过；补全失败或取消授权时停止，保留旧程序与账号配置。
+- 本次调整 Windows 安装流程，macOS 保持 2.2.1。
+
 ## 2.2.1 正式版
 
 [下载 Windows / macOS 2.2.1](https://github.com/Ye9137/CampusConnect/releases/latest) · [更新说明](2.2.1-更新说明.md)
@@ -257,7 +263,7 @@ Windows 与 macOS 同步提供 2.0.0 正式版，平台认证方式的差异见�
 
 1. 双击 **`CampusConnect-Windows-x64-Setup.exe`**，按中文向导安装。
 2. 在「选择安装位置」中修改完整路径，浏览选中的文件夹就是最终安装目录，不再自动添加子文件夹。安装完成页会显示实际安装路径。默认安装到 `%LOCALAPPDATA%\Programs\CampusConnect`。可选择其他有写入权限的独立文件夹，例如 `D:\Apps\CampusConnect`。
-3. 在组件页选择是否创建桌面快捷方式（默认勾选）。开始菜单快捷方式和 Windows 卸载入口始终创建。程序已包含 .NET，无须单独安装 .NET。应用窗口、任务栏、托盘、安装包及快捷方式使用与 Mac 一致的校园 Wi-Fi 图标。
+3. 在组件页选择是否创建桌面快捷方式（默认勾选）。开始菜单快捷方式和 Windows 卸载入口始终创建。程序已包含 .NET，并附带微软官方 .NET 10 桌面运行时离线安装包；安装时检测同架构 10.0.14 或更高的 10.0 正式版本，缺少时自动补全，可能提示管理员授权。应用窗口、任务栏、托盘、安装包及快捷方式使用与 Mac 一致的校园 Wi-Fi 图标。
 4. 程序界面和网页认证需要 WebView2。安装程序会检测已安装的版本，缺少时运行 Microsoft 官方引导程序安装；**下载组件时需要联网**。如果当时校园网还没有认证，可先用手机热点完成组件安装。
 5. 安装完成后，可直接运行，或通过桌面 / 开始菜单的「校园Wi-Fi小助手」打开。
 6. 在「校园网设置」填写学校 Wi-Fi 名称、认证网址、上网账号和密码，然后保存。
@@ -323,7 +329,7 @@ Windows 如果拒绝读取 Wi-Fi，在「设置 → 隐私和安全性 → 位�
 - 重新安装时自动填入之前的目录；无论使用原目录还是更换目录，都会先清理旧版程序文件（包括旧版 DLL），保留账号设置。
 - 如果 Windows 设置提示找不到卸载程序：先从系统托盘退出应用，再运行 **最新安装包**，选择原来的安装目录完成修复，然后重新打开 Windows 设置卸载。修复会重新生成 `Uninstall.exe` 和卸载入口，保留账号配置。旧卸载程序缺失时，需先在原目录修复，再更换目录。
 - 安装器检查程序文件、卸载文件和注册表写入结果；不会在卸载程序生成失败后继续报告安装完成。
-- 本安装包为当前用户安装，默认不需要管理员权限。`Program Files` 等受保护目录可能不可写，请选择自己的用户目录或数据盘目录。
+- 主程序为当前用户安装。首次补全系统 .NET 桌面运行时或其他运行库时，可能提示管理员授权；取消或补全失败会停止安装，并保留旧版本程序和账号配置。`Program Files` 等受保护目录可能不可写，请选择自己的用户目录或数据盘目录。
 
 ## 本地数据
 
@@ -350,15 +356,17 @@ powershell -ExecutionPolicy Bypass -File Windows/build.ps1 -Runtime win-x64
 powershell -ExecutionPolicy Bypass -File Windows/build-installer.ps1 -Runtime win-x64
 ```
 
-构建时从 Microsoft 下载并验证 WebView2 引导程序签名，输出 `Windows/installer/dist/CampusConnect-Windows-x64-Setup.exe`。
+构建时从 Microsoft 下载 WebView2 引导程序和已固定版本的 .NET Desktop Runtime 离线安装包，验证微软签名及 .NET 文件 SHA-512，输出 `Windows/installer/dist/CampusConnect-Windows-x64-Setup.exe`。
 
 已发布程序的情况下，可通过 Python 调用原生 NSIS 编译器跨平台构建安装包：
 
 ```sh
-python3 Windows/installer/build.py --makensis /path/to/makensis --bootstrapper /path/to/MicrosoftEdgeWebview2Setup.exe
+python3 Windows/installer/build.py --makensis /path/to/makensis --bootstrapper /path/to/MicrosoftEdgeWebview2Setup.exe --desktop-runtime /path/to/windowsdesktop-runtime-10.0.14-win-x64.exe
 ```
 
-安装器默认交互运行，也支持 `Setup.exe /S /D=D:\Apps\CampusConnect` 静默安装，`/D=` 必须放在最后且不加引号；`/SKIPWEBVIEW2` 仅用于已另行部署 WebView2 的环境，缺少该组件时程序无法显示界面。静默卸载默认保留用户配置。
+运行时依赖版本和官方 SHA-512 固定在 `installer/desktop-runtime.json`；`installer/desktop_runtime.py --output <path>` 可预下载并校验。已安装同架构兼容补丁时不重复运行系统安装器，.NET 8/9/11 或其他架构不替代本程序所需的 .NET 10.0。卸载本程序保留系统共享 .NET。
+
+安装器默认交互运行，也支持 `Setup.exe /S /D=D:\Apps\CampusConnect` 静默安装，`/D=` 必须放在最后且不加引号；`/SKIPWEBVIEW2` 仅用于已另行部署 WebView2 的环境，缺少该组件时程序无法显示界面。静默安装也检测并补全 .NET，系统仍可能要求管理员授权；用户取消或运行库安装失败返回非零退出码。静默卸载默认保留用户配置。
 
 macOS / Linux 安装 .NET 10 SDK 后也可交叉编译 Windows 运行包：
 
@@ -366,7 +374,7 @@ macOS / Linux 安装 .NET 10 SDK 后也可交叉编译 Windows 运行包：
 dotnet publish Windows/source/CampusConnect.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o Windows/dist/win-x64
 ```
 
-此应用和安装器未进行 Windows 商业代码签名。安装包已完成交叉编译与打包检查，但安装向导、快捷方式、卸载以及校园连接仍需在 Windows 实机验证；见仓库根目录的 `VALIDATION.md`。
+此应用和安装器未进行 Windows 商业代码签名。微软运行库保留其官方数字签名。Windows CI 检查缺失运行时安装、原生启动、安装向导、快捷方式、升级、修复及卸载；真实校园连接仍需在学校现场验证，见仓库根目录的 `VALIDATION.md`。
 
 ## 2.1.1 正式版
 

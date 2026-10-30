@@ -18,11 +18,14 @@ Unicode true
 !ifndef BOOTSTRAPPER
   !error "BOOTSTRAPPER must be the Microsoft WebView2 bootstrapper path"
 !endif
+!ifndef DESKTOP_RUNTIME
+  !error "DESKTOP_RUNTIME must be the verified Microsoft offline Desktop Runtime installer"
+!endif
 !ifndef RUNTIME
   !define RUNTIME "win-x64"
 !endif
 !ifndef VERSION
-  !define VERSION "2.2.1"
+  !define VERSION "2.2.2"
 !endif
 !ifndef SIZE_KB
   !define SIZE_KB 0
@@ -44,7 +47,7 @@ SetCompressor /FINAL zlib
 ShowInstDetails show
 ShowUninstDetails show
 BrandingText "By Ye · 禁止商用，商用须经作者授权"
-VIProductVersion "2.2.1.0"
+VIProductVersion "2.2.2.0"
 !define MUI_ICON "../source/AppIcon.ico"
 !define MUI_UNICON "../source/AppIcon.ico"
 VIAddVersionKey /LANG=2052 "ProductName" "校园Wi-Fi小助手安装程序"
@@ -62,7 +65,7 @@ Var StartupCommand
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "欢迎安装校园Wi-Fi小助手"
-!define MUI_WELCOMEPAGE_TEXT "本向导将安装 CampusConnect ${VERSION}。$\r$\n$\r$\n您可以选择安装目录、创建桌面快捷方式，并在安装完成后立即运行。$\r$\n$\r$\n程序安装到当前用户，已包含 .NET 与验证码模型。缺少组件时，将从微软下载 WebView2 或 Visual C++ 运行库（需要联网，可能提示管理员授权）。"
+!define MUI_WELCOMEPAGE_TEXT "本向导将安装 CampusConnect ${VERSION}。$\r$\n$\r$\n您可以选择安装目录、创建桌面快捷方式，并在安装完成后立即运行。$\r$\n$\r$\n安装包包含 .NET 桌面运行时，已安装兼容版本时自动跳过，缺少时离线安装，可能提示管理员授权。WebView2 或 Visual C++ 运行库缺少时仍需联网补全。"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_DIRECTORYPAGE_VARIABLE $ChosenDir
 !define MUI_DIRECTORYPAGE_TEXT_TOP "程序将安装到下方完整路径，不会额外添加子文件夹。请选一个有写入权限的独立文件夹。"
@@ -187,6 +190,37 @@ Function DetectWebView
   ${EndIf}
 FunctionEnd
 
+Function EnsureDesktopRuntime
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=windowsdesktop-runtime.exe "${DESKTOP_RUNTIME}"
+  File /oname=desktop-runtime.json "desktop-runtime.json"
+  File /oname=install-desktop-runtime.ps1 "install-desktop-runtime.ps1"
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $1 "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
+  !if "${RUNTIME}" == "win-arm64"
+    StrCpy $2 "arm64"
+  !else
+    StrCpy $2 "x64"
+  !endif
+  StrCpy $3 ""
+  IfSilent 0 +2
+    StrCpy $3 "-Quiet"
+  DetailPrint "检查 .NET 10 桌面运行时：兼容版本自动跳过，缺少时使用内置离线安装包。"
+  nsExec::ExecToLog '$\"$1$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PLUGINSDIR\install-desktop-runtime.ps1$\" -RuntimeArch $2 $3'
+  Pop $0
+  ${If} $0 == 3010
+    SetRebootFlag true
+    DetailPrint ".NET 桌面运行时已安装，Windows 建议稍后重新启动。"
+  ${ElseIf} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP ".NET 桌面运行时安装未完成，安装已停止。请允许 Microsoft 安装程序的管理员授权后重试。旧版本程序及账号配置予以保留。" /SD IDOK
+    SetErrorLevel 3
+    Abort
+  ${EndIf}
+  SetOutPath "$INSTDIR"
+FunctionEnd
+
 Section "程序文件与开始菜单快捷方式（必需）" SEC_APP
   SectionIn RO
   SetDetailsView show
@@ -194,6 +228,8 @@ Section "程序文件与开始菜单快捷方式（必需）" SEC_APP
   DetailPrint "[1/5] 检查安装目录与正在运行的程序"
   Call ValidateDirectory
   Call CheckRunning
+  ; Resolve this prerequisite before removing an existing working installation.
+  Call EnsureDesktopRuntime
   ${If} $OldDir != ""
     IfFileExists "$OldDir\Uninstall.exe" 0 old_missing
     DetailPrint "移除旧版本的程序文件（保留账号配置）…"
