@@ -19,6 +19,8 @@ internal static class DrcomBrowserTests
             new CoreWebView2EnvironmentOptions(PortalBrowserPolicy.Arguments)), _ => Task.FromResult(true));
         Dictionary<WebView2, Form> Popups() => (Dictionary<WebView2, Form>)typeof(PortalController)
             .GetField("drcomPopups", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(portal)!;
+        bool Confirmed() => (bool)typeof(PortalController)
+            .GetField("authenticationConfirmed", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(portal)!;
         form.Controls.Add(portal.View);
         Exception? failure = null;
         form.Shown += async (_, _) => {
@@ -29,7 +31,7 @@ internal static class DrcomBrowserTests
                     Username = "fixture-user", AutoSubmit = true, Automatic = true };
                 await portal.OpenAsync(profile, "fixture-secret");
                 await Until(() => Task.FromResult(server.Posts.Count == 1 && portal.Address.EndsWith("/landing") &&
-                    Popups().Count == 1 && !portal.RequiresInteraction && !portal.IsAuthenticating));
+                    Popups().Count == 1 && Confirmed() && !portal.RequiresInteraction && !portal.IsAuthenticating));
                 expect(server.Posts.Single().Contains("DDDDD=fixture-user") && server.Posts.Single().Contains("upass=fixture-secret"),
                     "Dr.COM onclick popup does not interrupt the main form POST");
                 expect(server.Logouts == 0 && notices.Count == 0, "native Dr.COM confirmation never requests logout or opens a failure guide");
@@ -56,7 +58,7 @@ internal static class DrcomBrowserTests
 
                 // The same status page can be the main document on older gateways.
                 await portal.OpenAsync(profile with { PortalUrl = server.MainStatus }, "fixture-secret");
-                await Until(() => Task.FromResult(!portal.IsAuthenticating && !portal.RequiresInteraction));
+                await Until(() => Task.FromResult(portal.Address == server.MainStatus && Confirmed() && !portal.IsAuthenticating && !portal.RequiresInteraction));
                 expect(server.Posts.Count == 1, "already-online main document is confirmed before login-form preflight");
             } catch (Exception ex) { failure = ex; }
             finally { portal.Stop(clearView: false); form.Close(); }
