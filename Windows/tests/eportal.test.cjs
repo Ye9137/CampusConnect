@@ -419,6 +419,44 @@ document.getElementById('loginLink').onclick = () => clicks++;
     assert.equal(await page.evaluate(()=>clicks),0);
     await reset();
     assert.equal(await page.evaluate(script({serviceOption:''})), 'submitted');
+    // ePortal implementations may keep their own request logic inside doauthen
+    // without exposing AuthInterFace.login. The real handler must still run.
+    await reset();
+    await page.evaluate(() => {
+      window.handlerCalls=0;
+      window.doauthen=()=>{
+        handlerCalls++;
+        window.received=[document.getElementById('username').value,document.getElementById('pwd').value];
+      };
+      document.getElementById('loginLink').setAttribute('onclick','doauthen()');
+    });
+    assert.equal(await page.evaluate(script({confirmSubmit:true})), 'submitted');
+    assert.equal(await page.evaluate(()=>handlerCalls),1);
+    assert.deepEqual(await page.evaluate(()=>received),[cfg.username,cfg.password]);
+    assert.equal(await page.evaluate(script({confirmSubmit:true})), 'already-submitted');
+    assert.equal(await page.evaluate(script({confirmSubmit:true,statusOnly:true,password:''})), 'awaiting-authentication');
+    assert.equal(await page.evaluate(()=>handlerCalls),1);
+    // Keyup-driven credential models must be ready before the original click.
+    await reset();
+    await page.evaluate(() => {
+      window.typed=[];window.received=null;
+      for(const id of ['username','pwd']) document.getElementById(id).onkeyup=event=>{
+        if(event.key==='Enter') throw new Error('Filling must not press Enter');
+        typed.push(id);
+      };
+      document.getElementById('loginLink').onclick=()=>{
+        if(typed.includes('username')&&typed.includes('pwd')){
+          clicks++;received=[document.getElementById('username').value,document.getElementById('pwd').value];
+        }
+      };
+    });
+    assert.equal(await page.evaluate(script({confirmSubmit:true,submit:false})), 'filled');
+    assert.deepEqual(await page.evaluate(()=>typed),['username','pwd']);
+    assert.equal(await page.evaluate(()=>clicks),0);
+    assert.equal(await page.evaluate(script({confirmSubmit:true})), 'submitted');
+    assert.deepEqual(await page.evaluate(()=>received),[cfg.username,cfg.password]);
+    assert.deepEqual(await page.evaluate(()=>typed),['username','pwd']);
+    assert.equal(await page.evaluate(()=>clicks),1);
     // Confirmed submission is not authentication; preserve school callbacks.
     const setupAuth = async () => {
       await reset();

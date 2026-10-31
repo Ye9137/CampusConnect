@@ -138,6 +138,10 @@
       setter.call(input, value);
       input.dispatchEvent(new Event('input', {bubbles:true}));
       input.dispatchEvent(new Event('change', {bubbles:true}));
+      // Some ePortal pages update their login model from keyup rather than
+      // input/change. Let those original handlers observe the completed value.
+      if (input === portalUser || input === portalPass)
+        input.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, key:'a'}));
     }
   }
   // A service mismatch pauses submission, but must not skip the independent
@@ -308,8 +312,8 @@
   })) return 'manual-required';
   // WKWebView can finish filling before the page handles its first activation.
   // Observe only the known school's own login flow; never call its API ourselves.
-  if (cfg.confirmSubmit && submit === portalButton && /doauthen/.test(submit.getAttribute('onclick') || '')) {
-    if (typeof window.AuthInterFace?.login !== 'function') return 'waiting-ready';
+  if (cfg.confirmSubmit && submit === portalButton && /doauthen/.test(submit.getAttribute('onclick') || '') &&
+      typeof window.AuthInterFace?.login === 'function') {
     const state = window.__campusSubmitAttempt ||= {clicks:0, prepared:false, handlerStarted:false, failed:false};
     const observe = (owner, key, flag) => {
       if (owner[key] === state[key]) return;
@@ -360,6 +364,9 @@
     // A second activation is allowed only if the school's handler never ran.
     return 'waiting-submit';
   }
+  // Other ePortal builds use doauthen with a different request implementation.
+  // Their original click handler remains the submit entry; only the inspected
+  // AuthInterFace variant above needs that API-specific response observer.
   window.__campusSubmitted = true;
   submit.click();
   if (gportalForm && window.__campusSubmitAttempt?.gportalObserved && !window.__campusSubmitAttempt.gportalRequestStarted) {

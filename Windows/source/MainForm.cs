@@ -595,10 +595,17 @@ internal sealed partial class MainForm : Form
             var expected = generation;
             recovery.Begin(DateTimeOffset.UtcNow);
             if (showPage) Navigate("portal");
-            if (!discover && detectedPortalGeneration != expected && await CampusNetwork.IsAvailableAsync(saved)) {
-                var probe = await Connectivity.ProbePortalAsync();
+            if (!discover && await CampusNetwork.IsAvailableAsync(saved)) {
+                if (detectedPortalGeneration != expected) {
+                    var probe = await Connectivity.ProbePortalAsync();
+                    if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
+                    detectedPortalUrl = probe.PortalUrl;
+                }
+                // ePortal can exempt the Microsoft probe while returning a fresh
+                // wired/wireless entry from Baidu or the configured gateway root.
+                var discoveredEntry = await Connectivity.DiscoverPortalEntryAsync(saved.PortalUrl, detectedPortalUrl);
                 if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
-                detectedPortalUrl = probe.PortalUrl; detectedPortalGeneration = expected;
+                detectedPortalUrl = discoveredEntry; detectedPortalGeneration = expected;
             }
             if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
             // Live entry is scoped to this attempt; keep all saved profile fields.

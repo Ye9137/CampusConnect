@@ -15,6 +15,11 @@ internal static class Connectivity
         UseProxy = false, AllowAutoRedirect = false,
         AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
     }) { Timeout = Timeout.InfiniteTimeSpan };
+    private static readonly Uri EntryProbeAddress = new("http://www.baidu.com/");
+    private static readonly HttpClient EntryProbeClient = new(new HttpClientHandler {
+        UseProxy = false, AllowAutoRedirect = false, UseCookies = false,
+        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+    }) { Timeout = Timeout.InfiniteTimeSpan };
 
     public static async Task<InternetStatus> CheckAsync(Guid? interfaceId)
         => (await InspectAsync(interfaceId)).Status;
@@ -85,6 +90,59 @@ internal static class Connectivity
         } catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException) {
             return new(PortalProbeState.Unknown);
         }
+    }
+
+    internal static bool IsUsablePortalEntry(string? address)
+    {
+        if (address is null || CampusProfile.Origin(address) is null) return false;
+        var uri = new Uri(address, UriKind.Absolute);
+        // Public probe services can redirect HTTP to their own HTTPS site.
+        // That redirect is not evidence of a campus authentication entry.
+        var host = uri.IdnHost.TrimEnd('.');
+        if (new[] { "baidu.com", "msftconnecttest.com", "msftncsi.com" }.Any(domain =>
+            host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))) return false;
+        if (!IsEportalAddress(uri)) return true;
+        var path = uri.AbsolutePath.TrimEnd('/');
+        return !path.EndsWith("/success.jsp", StringComparison.OrdinalIgnoreCase)
+            && !path.Contains("redirectortosuccess", StringComparison.OrdinalIgnoreCase)
+            && !(path.EndsWith("/index.jsp", StringComparison.OrdinalIgnoreCase) && uri.Query.Length <= 1);
+    }
+
+    private static bool IsEportalAddress(Uri address)
+        => address.AbsolutePath.StartsWith("/eportal/", StringComparison.OrdinalIgnoreCase)
+            || address.AbsolutePath.Equals("/eportal", StringComparison.OrdinalIgnoreCase);
+
+    public static Task<string?> DiscoverPortalEntryAsync(string savedEntry, string? observedEntry)
+        => DiscoverPortalEntryAsync(savedEntry, observedEntry,
+            (request, token) => EntryProbeClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token));
+
+    // Only discover the gateway's current entry; never send credentials or invent
+    // userip/wlanuserip or wired/wireless parameters from a previous session.
+    internal static async Task<string?> DiscoverPortalEntryAsync(string savedEntry, string? observedEntry,
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send, TimeSpan? timeout = null)
+    {
+        if (IsUsablePortalEntry(observedEntry)) return observedEntry;
+        var probes = new List<Uri> { EntryProbeAddress };
+        if (CampusProfile.Origin(savedEntry) is { } origin && IsEportalAddress(new Uri(savedEntry, UriKind.Absolute)))
+            probes.Add(new Uri(origin + "/"));
+        foreach (var address in probes) {
+            using var deadline = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(4));
+            try {
+                using var request = new HttpRequestMessage(HttpMethod.Get, address);
+                request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+                using var response = await send(request, deadline.Token).WaitAsync(deadline.Token);
+                if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308) || response.Headers.Location is not { } location)
+                    continue;
+                var candidate = location.IsAbsoluteUri ? location.AbsoluteUri : new Uri(address, location).AbsoluteUri;
+                if (IsUsablePortalEntry(candidate)) return candidate;
+            } catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or UriFormatException) {
+                // A probe can be unavailable independently of the campus gateway.
+                // Continue to the configured ePortal origin; callers decide how to
+                // handle absence instead of receiving the stale saved entry.
+            }
+        }
+        return null;
     }
 
     internal static async Task<InternetStatus> CheckWithPingAsync(Func<Task<IPStatus>> send, TimeSpan? timeout = null)

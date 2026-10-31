@@ -61,6 +61,13 @@ internal static class BrowserRedirectTests
                 await Until(async () => portal.Address.Contains("/manual-next") && JsonSerializer.Deserialize<string>(
                     await portal.View.CoreWebView2.ExecuteScriptAsync("document.querySelector('input[type=password]')?.value || ''")) == "fixture-secret", TimeSpan.FromSeconds(10));
                 expect(server.Records.Count == 2 && portal.RequiresInteraction, "manual mode follows and fills another host without submitting");
+                // The supplied working client accepts ePortal's original
+                // doauthen handler without requiring AuthInterFace.login.
+                await portal.OpenAsync(profile with { PortalUrl = server.Url("localhost", "/eportal/index.jsp?t=wire-v2&userip=fixture") }, "fixture-secret");
+                await Until(() => Task.FromResult(server.Records.Count == 3 && portal.Address.Contains("/eportal/success.jsp")), TimeSpan.FromSeconds(15));
+                expect(server.Records.Last() == "[\"fixture-user\",\"fixture-secret\"]",
+                    "production WebView2 updates keyup-driven ePortal fields and invokes the school doauthen handler without AuthInterFace");
+                expect(notices.Count == 0, "alternate ePortal implementation does not produce a login failure guide");
                 // The same HTTP error before confirmation must still be actionable.
                 await portal.OpenAsync(profile with { PortalUrl = server.Url("localhost", "/landing-error") }, "fixture-secret");
                 await Until(() => Task.FromResult(notices.Count > 0), TimeSpan.FromSeconds(10));
@@ -138,6 +145,10 @@ internal static class BrowserRedirectTests
                         if (step < 11) { status = "302 Found"; extra = "Location: " + Url(step % 2 == 0 ? "127.0.0.1" : "localhost", "/bounce?step=" + (step + 1)) + "\r\n"; }
                         else html = "<p>Waiting for school login</p><script>setTimeout(()=>location.replace(" + JsonSerializer.Serialize(Url("localhost", "/login?ticket=fixture")) + "),31000)</script>";
                     }
+                    else if (uri.AbsolutePath == "/eportal/index.jsp") {
+                        html = "<input id=username><input id=pwd type=password><a id=loginLink onclick='doauthen()'>登录</a><script>window.typed={};for(const id of ['username','pwd'])document.getElementById(id).onkeyup=()=>typed[id]=document.getElementById(id).value;window.doauthen=()=>{if(!typed.username||!typed.pwd)return;fetch('/record',{method:'POST',body:JSON.stringify([typed.username,typed.pwd])}).then(()=>location.href='/eportal/success.jsp?userIndex=fixture')};</script>";
+                    }
+                    else if (uri.AbsolutePath == "/eportal/success.jsp") { html = "<p>School authentication completed</p>"; }
                     else if (uri.AbsolutePath is "/login" or "/second" or "/manual" or "/manual-next") {
                         var next = uri.AbsolutePath == "/login" ? ".then(()=>window.open(" + JsonSerializer.Serialize(Url("127.0.0.1", "/second")) + ",'_blank'))" : "";
                         html = "<input name=username><input type=password><button id=login type=button>连接</button><script>window.clicks=0;login.onclick=()=>{clicks++;fetch('/record',{method:'POST',body:JSON.stringify([document.querySelector('[name=username]').value,document.querySelector('[type=password]').value])})" + next + "}</script>";

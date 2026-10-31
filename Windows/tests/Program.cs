@@ -417,4 +417,81 @@ Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net
 Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.TimedOut), () => Task.FromResult(clearProbe))).Status == InternetStatus.Unavailable, "existing failed-ping behavior is retained");
 Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => throw new System.Net.Http.HttpRequestException("fixture"))).Status == InternetStatus.Online, "unreachable probe service alone does not reject good ping");
 Expect((await Connectivity.CheckWithPortalAsync(() => Task.FromResult(System.Net.NetworkInformation.IPStatus.Success), () => new TaskCompletionSource<PortalProbe>().Task, TimeSpan.FromMilliseconds(20))).Status == InternetStatus.Online, "hung HTTP probe is bounded and does not freeze the UI");
+// The supplied ePortal client refreshes the current network's URL from Baidu,
+// then the configured gateway root. Exercise those responses without network I/O.
+HttpResponseMessage EntryResponse(int status, string? location = null) {
+    var response = new HttpResponseMessage((System.Net.HttpStatusCode)status);
+    if (location is not null) response.Headers.Location = new Uri(location, UriKind.RelativeOrAbsolute);
+    return response;
+}
+var staleEportal = "http://gateway.test:8080/eportal/index.jsp?t=wireless-v2&wlanuserip=192.0.2.10&ticket=old";
+var freshWire = "http://gateway.test:8080/eportal/index.jsp?t=wire-v2&userip=192.0.2.20&ticket=new%2Bwire";
+var freshWireless = "http://gateway.test:8080/eportal/index.jsp?t=wireless-v2&wlanuserip=192.0.2.30&ticket=new%2Bwifi";
+var entryProbes = new List<string>();
+Task<HttpResponseMessage> CaptureEntryRequest(HttpRequestMessage request, CancellationToken token) {
+    Expect(request.Method == HttpMethod.Get, "entry discovery uses only GET");
+    Expect(request.Headers.Authorization is null && !request.Headers.Contains("Cookie"), "entry discovery adds no account or browser session credentials");
+    Expect(request.RequestUri!.UserInfo.Length == 0 && request.RequestUri.Query.Length == 0, "entry probes omit saved session and user parameters");
+    Expect(token.CanBeCanceled, "each entry probe has a cancellation deadline");
+    entryProbes.Add(request.RequestUri.AbsoluteUri);
+    return Task.FromResult(EntryResponse(200));
+}
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, freshWire, CaptureEntryRequest) == freshWire && entryProbes.Count == 0,
+    "usable observed entry retains its port and query and avoids all extra probes");
+var microsoftClear = Connectivity.ClassifyPortalResponse(200, probeAddress, null, "Microsoft Connect Test");
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, microsoftClear.PortalUrl, async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    return EntryResponse(302, freshWire);
+}) == freshWire && entryProbes.SequenceEqual(new[] { "http://www.baidu.com/" }),
+    "Baidu gateway redirect discovers the live wired entry when Microsoft is not intercepted");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, null, async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    if (request.RequestUri!.Host == "www.baidu.com") throw new HttpRequestException("fixture: public probe unreachable");
+    return EntryResponse(307, freshWire);
+}) == freshWire && entryProbes.SequenceEqual(new[] { "http://www.baidu.com/", "http://gateway.test:8080/" }),
+    "failed public probe falls back to the configured ePortal origin root without old wireless parameters");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, null, async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    return request.RequestUri!.Host == "www.baidu.com" ? EntryResponse(200) :
+        EntryResponse(302, "/eportal/index.jsp?t=wireless-v2&wlanuserip=192.0.2.30&ticket=new%2Bwifi");
+}) == freshWireless, "relative gateway redirect retains fresh wireless parameters and the configured port");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, null, async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    return request.RequestUri!.Host == "www.baidu.com" ? EntryResponse(302, "https://www.baidu.com/") : EntryResponse(302, freshWire);
+}) == freshWire && entryProbes.SequenceEqual(new[] { "http://www.baidu.com/", "http://gateway.test:8080/" }),
+    "public probe HTTP-to-HTTPS redirect is skipped and the gateway still supplies the fresh wired entry");
+foreach (var rejectedEntry in new[] {
+    "http://gateway.test/eportal/index.jsp", "http://gateway.test/eportal/index.jsp?",
+    "http://gateway.test/eportal/success.jsp?userIndex=fixture",
+    "http://gateway.test/eportal/redirectortosuccess?userIndex=fixture",
+    "http://gateway.test/EPORTAL/SUCCESS.JSP?userIndex=fixture",
+    "javascript:alert(1)", "file:///C:/login", "http://user:secret@gateway.test/eportal/index.jsp?ticket=fixture",
+    "https://baidu.com/", "https://www.baidu.com/", "http://sub.baidu.com/landing",
+    "https://www.BAIDU.COM./", "http://www.msftconnecttest.com/", "https://www.msftconnecttest.com/connecttest.txt",
+    "http://msftconnecttest.com/redirect", "http://www.msftncsi.com/ncsi.txt"
+}) {
+    entryProbes.Clear();
+    Expect(!Connectivity.IsUsablePortalEntry(rejectedEntry), "success, parameter-free and unsafe observed entries are rejected");
+    Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, rejectedEntry, async (request, token) => {
+        using var ignored = await CaptureEntryRequest(request, token);
+        return EntryResponse(302, rejectedEntry);
+    }) is null && entryProbes.Count == 2, "rejected discovery responses never become the next login entry or stale fallback");
+}
+Expect(Connectivity.IsUsablePortalEntry("http://ordinary.test/login") &&
+    Connectivity.IsUsablePortalEntry("http://baidu.com.school.test/login"), "only known probe domains are excluded, without broad third-party or substring filtering");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync("http://ordinary.test/login?ticket=old", null, CaptureEntryRequest) is null &&
+    entryProbes.SequenceEqual(new[] { "http://www.baidu.com/" }), "ordinary school login does not trigger an unsolicited origin-root probe");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync("http://user:secret@gateway.test/eportal/index.jsp?ticket=old", null, CaptureEntryRequest) is null &&
+    entryProbes.Count == 1, "credential-bearing saved addresses cannot trigger a root request");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, null, async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    if (request.RequestUri!.Host == "www.baidu.com") return await new TaskCompletionSource<HttpResponseMessage>().Task;
+    return EntryResponse(302, freshWire);
+}, TimeSpan.FromMilliseconds(20)) == freshWire && entryProbes.Count == 2, "hung public discovery is bounded and continues to the gateway root");
 Console.WriteLine($"PASS: {checks} checks (validation, ping, retry policy, native ABI, XML, credentials).");
