@@ -80,9 +80,13 @@
     }
   }, true);
   const start = () => {
-    const load = window.onload;
-    const known = typeof load === 'function' &&
-      /^function\s*\([^)]*\)\s*\{\s*fillData\(\);\s*getServices\(\);\s*autosize\(\);?\s*\}$/.test(Function.prototype.toString.call(load));
+    const matches = handler => typeof handler === 'function' &&
+      /^function\s*(?:initPage\s*)?\([^)]*\)\s*\{\s*fillData\(\);\s*getServices\(\);\s*autosize\(\);?\s*\}$/.test(Function.prototype.toString.call(handler));
+    // The supplied Jiangnong page registers this same initialization as a
+    // named load listener. A slow 8080 background image must not block it.
+    const named = window.onload == null && matches(window.initPage);
+    const load = named ? window.initPage : window.onload;
+    const known = matches(load);
     if (!known || !document.querySelector('#loginLink') ||
         typeof window.AuthInterFace?.pageInfo !== 'function' ||
         typeof window.AuthInterFace?.getServices !== 'function') return;
@@ -103,7 +107,8 @@
     }
     // This exact handler has no load-event dependency. Invoke once at DOM ready;
     // late background images must not initialize it again or overwrite fields.
-    window.onload = null;
+    if (named) window.removeEventListener('load', load, false);
+    else window.onload = null;
     try { load.call(window); } catch (_) { state.failed = true; }
   };
   document.addEventListener('DOMContentLoaded', start, {once:true});

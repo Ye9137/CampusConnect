@@ -68,6 +68,16 @@ internal static class BrowserRedirectTests
                 expect(server.Records.Last() == "[\"fixture-user\",\"fixture-secret\"]",
                     "production WebView2 updates keyup-driven ePortal fields and invokes the school doauthen handler without AuthInterFace");
                 expect(notices.Count == 0, "alternate ePortal implementation does not produce a login failure guide");
+                await portal.OpenAsync(profile with { PortalUrl = server.Url("localhost", "/eportal/index.jsp?fixture=named-load") }, "fixture-secret");
+                await Until(() => Task.FromResult(server.Records.Count == 4), TimeSpan.FromSeconds(15));
+                expect(JsonSerializer.Deserialize<string>(await portal.View.CoreWebView2.ExecuteScriptAsync("document.readyState")) == "interactive",
+                    "native Jiangnong-shaped named initialization can submit while its background image is still pending");
+                expect(JsonSerializer.Deserialize<int[]>(await portal.View.CoreWebView2.ExecuteScriptAsync("[window.infoCalls,window.serviceCalls]"))!.SequenceEqual(new[] { 1, 1 }),
+                    "native named initialization awaits both school callbacks and runs each once");
+                server.ReleaseBackground.TrySetResult(true);
+                await Until(async () => JsonSerializer.Deserialize<string>(await portal.View.CoreWebView2.ExecuteScriptAsync("document.readyState")) == "complete", TimeSpan.FromSeconds(10));
+                expect(JsonSerializer.Deserialize<int[]>(await portal.View.CoreWebView2.ExecuteScriptAsync("[window.infoCalls,window.serviceCalls]"))!.SequenceEqual(new[] { 1, 1 }) && server.Records.Count == 4,
+                    "late background completion cannot repeat named page initialization or submit twice");
                 // The same HTTP error before confirmation must still be actionable.
                 await portal.OpenAsync(profile with { PortalUrl = server.Url("localhost", "/landing-error") }, "fixture-secret");
                 await Until(() => Task.FromResult(notices.Count > 0), TimeSpan.FromSeconds(10));
@@ -101,6 +111,7 @@ internal static class BrowserRedirectTests
         public readonly ConcurrentQueue<string> Requests = new();
         public readonly ConcurrentQueue<string> Records = new();
         public readonly TaskCompletionSource<bool> ReleaseLandingFailure = new();
+        public readonly TaskCompletionSource<bool> ReleaseBackground = new();
         public string Url(string host, string path) => $"http://{host}:{((IPEndPoint)listener.LocalEndpoint).Port}{path}";
         public FixtureServer() { listener.Start(); _ = Serve(); }
         public void Dispose() { cancellation.Cancel(); listener.Stop(); cancellation.Dispose(); }
@@ -144,6 +155,13 @@ internal static class BrowserRedirectTests
                         var step = int.Parse(uri.Query.Split('=')[1]);
                         if (step < 11) { status = "302 Found"; extra = "Location: " + Url(step % 2 == 0 ? "127.0.0.1" : "localhost", "/bounce?step=" + (step + 1)) + "\r\n"; }
                         else html = "<p>Waiting for school login</p><script>setTimeout(()=>location.replace(" + JsonSerializer.Serialize(Url("localhost", "/login?ticket=fixture")) + "),31000)</script>";
+                    }
+                    else if (uri.AbsolutePath == "/fixture-background") {
+                        await ReleaseBackground.Task.WaitAsync(cancellation.Token);
+                        status = "204 No Content";
+                    }
+                    else if (uri.AbsolutePath == "/eportal/index.jsp" && uri.Query.Contains("fixture=named-load")) {
+                        html = "<img src='/fixture-background'><input id=username><input id=pwd type=password><a id=loginLink onclick='doauthen()'>登录</a><script>window.infoCalls=0;window.serviceCalls=0;window.AuthInterFace={pageInfo(q,cb){infoCalls++;cb({})},getServices(q,cb){serviceCalls++;cb({})},login(record,cb){fetch('/record',{method:'POST',body:JSON.stringify(record)}).then(()=>cb({result:'success'}))}};function fillData(){AuthInterFace.pageInfo('',()=>{})}function getServices(){AuthInterFace.getServices('',()=>{})}function autosize(){}function initPage() { fillData(); getServices(); autosize(); }addEventListener('load',initPage,false);window.doauthen=()=>AuthInterFace.login([username.value,pwd.value],()=>{});</script>";
                     }
                     else if (uri.AbsolutePath == "/eportal/index.jsp") {
                         html = "<input id=username><input id=pwd type=password><a id=loginLink onclick='doauthen()'>登录</a><script>window.typed={};for(const id of ['username','pwd'])document.getElementById(id).onkeyup=()=>typed[id]=document.getElementById(id).value;window.doauthen=()=>{if(!typed.username||!typed.pwd)return;fetch('/record',{method:'POST',body:JSON.stringify([typed.username,typed.pwd])}).then(()=>location.href='/eportal/success.jsp?userIndex=fixture')};</script>";
