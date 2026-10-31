@@ -17,7 +17,7 @@
         !url.username && !url.password && /^\/F\.htm$/i.test(url.pathname);
     } catch (_) { return false; }
   })();
-  const drcomResult = (document.title || '').trim() === '信息返回' &&
+  const drcomResult = /^信息返回(?:窗|窗口)?$/.test((document.title || '').trim()) &&
     /^(?:0|[1-9]\d{0,2})$/.test(String(window.Msg)) &&
     !document.querySelector('input[type="password"]');
   if (drcomStatus || (drcomResult && Number(window.Msg) === 15)) return 'authenticated';

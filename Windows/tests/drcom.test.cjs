@@ -49,6 +49,11 @@ function wc(){if(confirm('关闭此窗口意味着结束本次连接，注销请
     const popup = await popupReady;
     await Promise.all([popup.waitForLoadState(), page.waitForURL('http://drcom.test/result')]);
     assert.equal(await page.evaluate(scripts.status), 'authenticated', 'Msg=15 is accepted');
+    for (const title of ['信息返回窗', '信息返回窗口']) {
+      await page.evaluate(text=>{document.title=text},title);
+      assert.equal(await page.evaluate(scripts.status),'authenticated','result title variant is accepted');
+    }
+    await page.evaluate(()=>{document.title='信息返回'});
     assert.equal(await popup.evaluate(scripts.popup), 'authenticated', 'cross-port Logout page is accepted');
     assert.equal(await popup.evaluate(scripts.popupFill), 'authenticated', 'status page never receives another submit');
     assert.deepEqual(requests.filter(r=>r.method==='POST').map(r=>new URLSearchParams(r.body).get('DDDDD')), ['fixture-user']);
