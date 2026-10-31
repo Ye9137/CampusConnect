@@ -535,6 +535,7 @@ internal sealed partial class MainForm : Form
             if (expected != generation || IsDisposed) return;
             if (!connected) {
                 online = false; recovery.Observe(InternetStatus.Unavailable);
+                portal.Stop(clearView: false);
                 Record(activeProfile.IsWired ? activeProfile.WiredAuth == "pppoe" ? "PPPoE 尚未建立连接，请检查 Windows 宽带连接设置。" : "请先插好网线并启用有线网络。" : "请先连接校园 Wi-Fi。"); return;
             }
             var adapter = await CampusNetwork.ReadInterfaceAsync(activeProfile);
@@ -545,7 +546,7 @@ internal sealed partial class MainForm : Form
             connected = await CampusNetwork.IsAvailableAsync(activeProfile);
             if (expected != generation || IsDisposed) return;
             if (!connected) {
-                online = false; recovery.Observe(InternetStatus.Unavailable); portal.ReportInternetUnavailable();
+                online = false; recovery.Observe(InternetStatus.Unavailable); portal.Stop(clearView: false);
                 Record("校园网络连接已变化，等待重新连接。"); return;
             }
             online = result == InternetStatus.Online;

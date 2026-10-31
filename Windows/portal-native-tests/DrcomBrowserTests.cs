@@ -58,10 +58,17 @@ internal static class DrcomBrowserTests
                 portal.Stop(clearView: false);
                 expect(Popups().Count == 0 && !portal.IsActive, "Stop disposes all status windows and cancels popup callbacks");
 
+                // MainForm uses Stop when the target adapter actually disconnects.
+                // A later automatic reconnect must not trust the old online page.
+                await portal.OpenAsync(profile, "fixture-secret", automaticRetry: true);
+                await Until(() => Task.FromResult(server.Posts.Count == 2 && Confirmed() && !portal.IsAuthenticating));
+                expect(server.Posts.Count == 2, "automatic reconnect after a real link loss creates a fresh login instead of reusing stale status");
+                portal.Stop(clearView: false);
+
                 // The same status page can be the main document on older gateways.
                 await portal.OpenAsync(profile with { PortalUrl = server.MainStatus }, "fixture-secret");
                 await Until(() => Task.FromResult(portal.Address == server.MainStatus && Confirmed() && !portal.IsAuthenticating && !portal.RequiresInteraction));
-                expect(server.Posts.Count == 1, "already-online main document is confirmed before login-form preflight");
+                expect(server.Posts.Count == 2, "already-online main document is confirmed before login-form preflight");
             } catch (Exception ex) { failure = ex; }
             finally { portal.Stop(clearView: false); form.Close(); }
         };
