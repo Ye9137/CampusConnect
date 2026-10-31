@@ -77,6 +77,7 @@ internal sealed partial class MainForm : Form
         FormClosed += (_, _) => {
             wiredAttempt?.Cancel();
             timer.Stop(); timer.Dispose(); tray.Dispose();
+            portal.Stop(clearView: false);
             portal.View.Dispose(); shell.Dispose();
         };
         portal.Status += message => {
@@ -572,7 +573,7 @@ internal sealed partial class MainForm : Form
                         if (expected != generation || !saved.Automatic || IsDisposed) return;
                     }
                 }
-                await OpenPortalAsync(showPage: true);
+                await OpenPortalAsync(showPage: true, automaticRetry: true);
             }
         } catch {
             if (expected == generation) online = false;
@@ -584,7 +585,7 @@ internal sealed partial class MainForm : Form
         portalOpenSerial++; openingPortal = false;
         portal.Stop();
     }
-    private async Task OpenPortalAsync(bool discover = false, bool showPage = true)
+    private async Task OpenPortalAsync(bool discover = false, bool showPage = true, bool automaticRetry = false)
     {
         if (saved.UsesSystemAuthentication) { Record("当前使用系统认证，请在网络概览点击立即连接。"); return; }
         if (!saved.UsesWebPortal && !discover) { Record("网页认证已关闭，请在设置中开启并保存。"); return; }
@@ -611,7 +612,7 @@ internal sealed partial class MainForm : Form
             // Live entry is scoped to this attempt; keep all saved profile fields.
             var active = !discover && detectedPortalGeneration == expected && detectedPortalUrl is { } entry && CampusProfile.Origin(entry) is not null
                 ? saved with { PortalUrl = entry } : saved;
-            await portal.OpenAsync(active, savedPassword, discover);
+            await portal.OpenAsync(active, savedPassword, discover, automaticRetry);
             if (serial != portalOpenSerial || IsDisposed) return;
             UpdatePortalVisibility(); PushState();
         } finally { if (serial == portalOpenSerial) openingPortal = false; }

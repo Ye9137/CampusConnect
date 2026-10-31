@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="../source/StartupRegistration.cs" Link="StartupRegistration.cs" />
     <Compile Include="../source/Connectivity.cs" Link="Connectivity.cs" />
+    <Compile Include="../source/DrcomPortal.cs" Link="DrcomPortal.cs" />
     <Compile Include="../source/PortalBrowserPolicy.cs" Link="PortalBrowserPolicy.cs" />
     <Compile Include="../source/WiredAuthentication.cs" Link="WiredAuthentication.cs" />
     <Compile Include="../source/ConnectionProfiles.cs" Link="ConnectionProfiles.cs" />

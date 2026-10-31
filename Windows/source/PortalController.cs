@@ -46,6 +46,10 @@ internal sealed class PortalController
     private bool authenticationConfirmed;
     private bool internetConfirmed;
     private Task? initialization;
+    private readonly Dictionary<WebView2, Form> drcomPopups = new();
+    private int popupSession;
+    private string openedEntryUrl = "";
+    private bool drcomLogoutRequested;
     private readonly Func<Task<CoreWebView2Environment>> getEnvironment;
     private readonly Func<CampusProfile, Task<bool>> campusConnected;
 
@@ -99,8 +103,11 @@ internal sealed class PortalController
         View.CoreWebView2.Settings.IsWebMessageEnabled = false;
         View.CoreWebView2.Settings.AreHostObjectsAllowed = false;
         View.CoreWebView2.SourceChanged += (_, _) => AddressChanged?.Invoke();
-        View.CoreWebView2.NewWindowRequested += (_, e) => {
+        View.CoreWebView2.NewWindowRequested += async (_, e) => {
             e.Handled = true;
+            if (IsActive && DrcomPortal.IsStatusPopup(view.CoreWebView2.Source, e.Uri)) {
+                await OpenDrcomPopupAsync(view, e); return;
+            }
             if (IsActive && CampusProfile.Origin(e.Uri) is not null) View.CoreWebView2.Navigate(e.Uri);
         };
         View.CoreWebView2.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
@@ -129,6 +136,100 @@ internal sealed class PortalController
                 await TryFillAsync();
             }
         };
+    }
+
+    private async Task OpenDrcomPopupAsync(WebView2 opener, CoreWebView2NewWindowRequestedEventArgs request)
+    {
+        using var deferral = request.GetDeferral();
+        var session = popupSession;
+        if (!IsActive || profile is null || drcomPopups.Count >= 4) return;
+        var popup = new WebView2 { Dock = DockStyle.Fill };
+        var host = new Form { Text = "校园认证状态", ClientSize = new Size(360, 160), ShowInTaskbar = false, MinimizeBox = false };
+        host.Controls.Add(popup);
+        drcomPopups.Add(popup, host);
+        // Closing the visible status window must not run the school's unload
+        // handler or silently end a session. Keep it alive until Stop/reset.
+        host.FormClosing += (_, e) => {
+            if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; host.Hide(); }
+        };
+        try {
+            if (View.FindForm() is { } owner) host.Show(owner); else host.Show();
+            var environment = opener.CoreWebView2.Environment;
+            var options = environment.CreateCoreWebView2ControllerOptions();
+            options.ProfileName = PortalBrowserPolicy.ProfileName;
+            options.IsInPrivateModeEnabled = false;
+            await popup.EnsureCoreWebView2Async(environment, options);
+            if (session != popupSession || !IsActive || popup.IsDisposed) { CloseDrcomPopup(popup); return; }
+            var core = popup.CoreWebView2;
+            core.Settings.IsPasswordAutosaveEnabled = false;
+            core.Settings.IsGeneralAutofillEnabled = false;
+            core.Settings.IsWebMessageEnabled = false;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
+            core.DownloadStarting += (_, e) => e.Cancel = true;
+            core.NavigationStarting += (_, e) => {
+                if (e.Uri != "about:blank" && CampusProfile.Origin(e.Uri) is null) e.Cancel = true;
+            };
+            core.NewWindowRequested += async (_, e) => {
+                e.Handled = true;
+                if (session == popupSession && IsActive && DrcomPortal.IsStatusPopup(core.Source, e.Uri))
+                    await OpenDrcomPopupAsync(popup, e);
+                // Never convert the status window's logout request into a main
+                // window navigation. Explicit logout stays inside this popup.
+                else if (session == popupSession && IsActive && e.IsUserInitiated &&
+                    CampusProfile.Origin(e.Uri) is not null && new Uri(e.Uri).Host == new Uri(core.Source).Host &&
+                    new Uri(e.Uri).AbsolutePath.Equals("/F.htm", StringComparison.OrdinalIgnoreCase)) {
+                    drcomLogoutRequested = true;
+                    generation++; authenticationConfirmed = false; authenticationDeadline = null;
+                    finished = true; continueAfterNavigation = false; password = "";
+                    RequiresInteraction = true; RetryNotBefore = null;
+                    Status?.Invoke("已请求学校注销，自动认证已暂停；需要上网时请点击立即认证。");
+                    await OpenDrcomPopupAsync(popup, e);
+                }
+            };
+            core.WindowCloseRequested += (_, _) => CloseDrcomPopup(popup);
+            core.DOMContentLoaded += async (_, _) => await CheckDrcomSessionAsync();
+            core.NavigationCompleted += async (_, e) => { if (e.IsSuccess) await CheckDrcomSessionAsync(); };
+            // Assign the fresh, unnavigated WebView. WebView2 preserves the
+            // original window.open relationship while the main form can POST.
+            request.NewWindow = core;
+        } catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) {
+            CloseDrcomPopup(popup);
+            if (session == popupSession && IsActive) Status?.Invoke("学校状态窗口暂时无法打开，请查看认证页面或重新认证。");
+        }
+    }
+
+    private void CloseDrcomPopup(WebView2 popup)
+    {
+        if (drcomPopups.Remove(popup, out var host)) host.Dispose();
+    }
+
+    private void CloseDrcomPopups()
+    {
+        popupSession++;
+        foreach (var popup in drcomPopups.Keys.ToArray()) CloseDrcomPopup(popup);
+    }
+
+    private async Task<bool> CheckDrcomSessionAsync()
+    {
+        var session = popupSession;
+        if (!IsActive || drcomLogoutRequested || profile is not { } active || !await campusConnected(active)) return false;
+        foreach (var popup in drcomPopups.Keys.ToArray()) {
+            try {
+                if (session != popupSession || popup.IsDisposed || !DrcomPortal.IsStatusAddress(popup.CoreWebView2.Source)) continue;
+                var current = PortalScript.AtCurrentPage(active, popup.CoreWebView2.Source);
+                var result = JsonSerializer.Deserialize<string>(await popup.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(current, "", statusOnly: true, drcomOnly: true)));
+                if (session != popupSession || popup.IsDisposed || !IsActive) return false;
+                if (result == "authenticated") { ConfirmAuthentication(); return true; }
+            } catch { /* A status window may replace itself during onUnload. */ }
+        }
+        try {
+            if (session != popupSession || View.IsDisposed || CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(active.PortalUrl)) return false;
+            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(active, "", statusOnly: true, drcomOnly: true)));
+            if (session != popupSession || !IsActive) return false;
+            if (result == "authenticated") { ConfirmAuthentication(); return true; }
+        } catch { /* Main-document navigation can replace the script context. */ }
+        return false;
     }
 
     private void FollowNavigation(string url)
@@ -167,8 +268,19 @@ internal sealed class PortalController
         }
     }
 
-    public async Task OpenAsync(CampusProfile saved, string secret, bool discover = false)
+    public async Task OpenAsync(CampusProfile saved, string secret, bool discover = false, bool automaticRetry = false)
     {
+        // HTTP probes can disagree with a Dr.COM online window. Recheck its
+        // current document before an automatic retry can POST another login.
+        if (automaticRetry && !discover && CampusProfile.Origin(saved.PortalUrl) == CampusProfile.Origin(openedEntryUrl)) {
+            var session = popupSession;
+            var stillOnline = await CheckDrcomSessionAsync();
+            if (session != popupSession) return;
+            if (stillOnline) {
+                Status?.Invoke("Dr.COM 状态窗口仍显示已登录，继续检查实际联网状态；如无法上网，请检查学校页面提示。");
+                return;
+            }
+        }
         Stop(clearView: false);
         var expected = generation;
         initialization ??= InitializeAsync();
@@ -179,6 +291,7 @@ internal sealed class PortalController
         if (expected != generation || View.IsDisposed) return;
         if (!connected) throw new InvalidOperationException(saved.IsWired ? "请先插好网线并启用有线网络，再打开认证页。" : "请先连接已设置的校园 Wi-Fi，再打开认证页。");
         saved.Validate();
+        openedEntryUrl = saved.PortalUrl;
         profile = discover ? saved with { PortalUrl = "http://www.msftconnecttest.com/redirect", Username = "", AutoSubmit = false } : saved;
         discovering = discover;
         redirectSession = new(profile.PortalUrl);
@@ -200,7 +313,7 @@ internal sealed class PortalController
     {
         if (!internetConfirmed) generation++;
         ClearProblem();
-        internetConfirmed = true; RequiresInteraction = false; RetryNotBefore = null;
+        internetConfirmed = true; RequiresInteraction = drcomLogoutRequested; RetryNotBefore = null;
         authenticationDeadline = null; finished = true; continueAfterNavigation = false; password = "";
         Status?.Invoke("已经连接成功");
     }
@@ -217,6 +330,8 @@ internal sealed class PortalController
     }
     public void ResetBrowser()
     {
+        CloseDrcomPopups();
+        drcomLogoutRequested = false;
         var waitingForUser = RequiresInteraction && authenticationDeadline is null;
         ClearProblem();
         generation++;
@@ -235,6 +350,8 @@ internal sealed class PortalController
     }
     public void Stop(bool clearView = true)
     {
+        CloseDrcomPopups();
+        drcomLogoutRequested = false;
         ClearProblem();
         generation++;
         profile = null; password = ""; finished = false; continueAfterNavigation = false; authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false;
@@ -252,6 +369,7 @@ internal sealed class PortalController
         var expected = generation;
         if (profile is not { } active) return true;
         try {
+            if (await CheckDrcomSessionAsync()) return true;
             if (CampusProfile.Origin(View.CoreWebView2.Source) != CampusProfile.Origin(active.PortalUrl)) return false;
             var connected = await campusConnected(active);
             if (expected != generation || View.IsDisposed) return true;
@@ -278,6 +396,7 @@ internal sealed class PortalController
         observingGeneration = expected;
         try {
             while (expected == generation && profile is { } active && authenticationDeadline is { } deadline) {
+                if (await CheckDrcomSessionAsync()) return;
                 var connected = await campusConnected(active);
                 if (expected != generation || View.IsDisposed) return;
                 if (!connected) { Stop(); Status?.Invoke("校园网已断开，停止登录校验。"); return; }
@@ -400,6 +519,7 @@ internal sealed class PortalController
     private async Task FillAsync(int expected)
     {
         var formWaits = 0;
+        var formDeadline = DateTimeOffset.UtcNow.AddSeconds(90);
         for (var attempt = 0; attempt <= 80; attempt++) {
             if (expected != generation || finished || profile is null) return;
             var activeProfile = profile;
@@ -423,6 +543,10 @@ internal sealed class PortalController
             var hasForm = JsonSerializer.Deserialize<bool>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.LoginFormProbe(activeProfile)));
             if (expected != generation || finished) return;
             if (!hasForm) {
+                if (await CheckAuthenticationPageAsync()) return;
+                if (DateTimeOffset.UtcNow >= formDeadline) {
+                    Fail("waiting-ready", "90 秒内未找到认证登录表单，请检查认证地址或学校页面提示。"); return;
+                }
                 // A slow intermediate page is not a failed login. Keep the attempt
                 // alive until navigation, a form, success, disconnection or Stop.
                 if (formWaits == 0) Status?.Invoke("正在等待跳转后的认证登录表单…");
@@ -430,7 +554,7 @@ internal sealed class PortalController
                 attempt--; continue;
             }
             var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(activeProfile, password)));
-            if (expected != generation) return;
+            if (expected != generation || authenticationConfirmed || internetConfirmed) return;
             switch (result) {
                 case "captcha-required": await HandleCaptchaAsync(expected); return;
                 case "authenticated":

@@ -153,6 +153,7 @@ internal static class Program
             } finally { portal.View.Dispose(); }
         }
         BrowserRedirectTests.Run(Expect);
+        DrcomBrowserTests.Run(Expect);
         Console.WriteLine($"PASS: {checks} native portal checks (production redirects, recovery, cooldown, manual holds and browser restart).");
     }
 }

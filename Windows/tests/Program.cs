@@ -10,6 +10,24 @@ void Invalid(CampusProfile profile) {
     throw new Exception("Invalid profile accepted.");
 }
 PortalRedirectTests.Run(Expect);
+if (args.Length == 2 && args[0] == "--drcom-fixture") {
+    var drcom = new CampusProfile { PortalUrl = "http://drcom.test/", Username = "fixture-user", AutoSubmit = true };
+    var popup = drcom with { PortalUrl = "http://drcom.test:9002/In0" };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new {
+        fill = PortalScript.Build(drcom, "fixture-secret"),
+        manual = PortalScript.Build(drcom with { AutoSubmit = false }, "fixture-secret"),
+        status = PortalScript.Build(drcom, "", statusOnly: true),
+        popup = PortalScript.Build(popup, "", statusOnly: true),
+        popupFill = PortalScript.Build(popup, "fixture-secret"),
+        probe = PortalScript.LoginFormProbe(drcom)
+    }));
+    Console.WriteLine("PASS: Dr.COM fixture generated from production embedded resources."); return;
+}
+Expect(PortalProblem.AuthenticationMessage("authentication-rejected:DRCOM_3").Contains("Msg=3"), "Dr.COM rejection preserves numeric school code");
+foreach (var target in new[] { "http://drcom.test:9002/In0", "http://drcom.test:9002/0" })
+    Expect(DrcomPortal.IsStatusPopup("http://drcom.test/", target), "same gateway cross-port status popup is kept separate");
+foreach (var target in new[] { "http://other.test:9002/In0", "http://drcom.test:9002/F.htm", "http://drcom.test:9002/login", "http://drcom.test:9003/In0", "http://user:secret@drcom.test:9002/In0" })
+    Expect(!DrcomPortal.IsStatusPopup("http://drcom.test/", target), "only known credential-free Dr.COM status popups are classified");
 var loadGate = new PortalProblemGate();
 Expect(loadGate.Report("load-failed", loadDetail: "学校认证服务器返回 HTTP 404。")?.Summary.Contains("HTTP 404") == true,
     "navigation guidance retains the concrete HTTP error");
@@ -471,7 +489,9 @@ foreach (var rejectedEntry in new[] {
     "javascript:alert(1)", "file:///C:/login", "http://user:secret@gateway.test/eportal/index.jsp?ticket=fixture",
     "https://baidu.com/", "https://www.baidu.com/", "http://sub.baidu.com/landing",
     "https://www.BAIDU.COM./", "http://www.msftconnecttest.com/", "https://www.msftconnecttest.com/connecttest.txt",
-    "http://msftconnecttest.com/redirect", "http://www.msftncsi.com/ncsi.txt"
+    "http://msftconnecttest.com/redirect", "http://www.msftncsi.com/ncsi.txt",
+    "http://gateway.test:9002/In0", "http://gateway.test:9002/0", "http://gateway.test/F.htm",
+    "https://www.hao123.com/", "http://hao123.com/", "https://www.HAO123.COM./"
 }) {
     entryProbes.Clear();
     Expect(!Connectivity.IsUsablePortalEntry(rejectedEntry), "success, parameter-free and unsafe observed entries are rejected");

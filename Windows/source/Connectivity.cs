@@ -99,9 +99,10 @@ internal static class Connectivity
         // Public probe services can redirect HTTP to their own HTTPS site.
         // That redirect is not evidence of a campus authentication entry.
         var host = uri.IdnHost.TrimEnd('.');
-        if (new[] { "baidu.com", "msftconnecttest.com", "msftncsi.com" }.Any(domain =>
+        if (new[] { "baidu.com", "msftconnecttest.com", "msftncsi.com", "hao123.com" }.Any(domain =>
             host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
             host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))) return false;
+        if (DrcomPortal.IsStatusAddress(address) || uri.AbsolutePath.Equals("/F.htm", StringComparison.OrdinalIgnoreCase)) return false;
         if (!IsEportalAddress(uri)) return true;
         var path = uri.AbsolutePath.TrimEnd('/');
         return !path.EndsWith("/success.jsp", StringComparison.OrdinalIgnoreCase)

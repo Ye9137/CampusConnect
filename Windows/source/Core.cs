@@ -18,6 +18,8 @@ internal sealed record PortalProblem(string Code, string Title, string Summary, 
     {
         const string prefix = "authentication-rejected:";
         var code = status?.StartsWith(prefix, StringComparison.Ordinal) == true ? status[prefix.Length..] : "";
+        if (System.Text.RegularExpressions.Regex.IsMatch(code, @"\ADRCOM_[1-9][0-9]{0,2}\z"))
+            return $"Dr.COM 返回 Msg={code[6..]}，已暂停自动重试。请查看学校网页的具体提示后处理。";
         return System.Text.RegularExpressions.Regex.IsMatch(code, @"\AE[0-9]{4,8}\z")
             ? $"学校返回 {code}，已暂停自动重试。请查看学校网页提示后处理；此代码尚无已核实的含义。"
             : "学校返回登录失败，请查看网页提示并检查账号、密码和服务选项。";
@@ -300,12 +302,12 @@ public static class PortalScript
         return InContext(profile, script, "'wrong-origin'");
     }
 
-    public static string Build(CampusProfile profile, string password, bool statusOnly = false)
+    public static string Build(CampusProfile profile, string password, bool statusOnly = false, bool drcomOnly = false)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
         var payload = JsonSerializer.Serialize(new {
             origin, username = profile.Username, password, serviceOption = profile.ServiceOption, userSelector = "",
-            passwordSelector = "", submitSelector = "", submit = profile.AutoSubmit, confirmSubmit = true, statusOnly
+            passwordSelector = "", submitSelector = "", submit = profile.AutoSubmit, confirmSubmit = true, statusOnly, drcomOnly
         });
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalTemplate.js")
             ?? throw new InvalidOperationException("缺少认证脚本。");

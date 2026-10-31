@@ -1,6 +1,29 @@
 (() => {
   const cfg = /*CAMPUS_CONFIG*/;
   if (location.origin !== cfg.origin) return 'wrong-origin';
+  // Dr.COM's PC login opens an independent status window before posting the
+  // main form. Match its rendered control and live URL variables together;
+  // a title, a logout URL in source, or an unexecuted Msg=15 branch is not proof.
+  const drcomStatus = (() => {
+    if ((document.title || '').trim().toLowerCase() !== 'logout' ||
+        document.querySelector('input[type="password"]')) return false;
+    const logout = [...document.querySelectorAll('a[href]')].some(a =>
+      a.getClientRects().length && /^javascript:\s*wc\s*\(\s*\)\s*;?$/i.test(a.getAttribute('href') || '') &&
+      (a.textContent || '').replace(/\s+/g, '') === '注销');
+    if (!logout || typeof window.url2 !== 'string') return false;
+    try {
+      const url = new URL(window.url2, location.href);
+      return url.hostname === new URL(cfg.origin).hostname && /^https?:$/.test(url.protocol) &&
+        !url.username && !url.password && /^\/F\.htm$/i.test(url.pathname);
+    } catch (_) { return false; }
+  })();
+  const drcomResult = (document.title || '').trim() === '信息返回' &&
+    /^(?:0|[1-9]\d{0,2})$/.test(String(window.Msg)) &&
+    !document.querySelector('input[type="password"]');
+  if (drcomStatus || (drcomResult && Number(window.Msg) === 15)) return 'authenticated';
+  if (drcomResult && Number(window.Msg) !== 0 && Number(window.Msg) !== 14)
+    return 'authentication-rejected:DRCOM_' + Number(window.Msg);
+  if (cfg.drcomOnly) return 'not-authenticated';
   const outcome = window.__campusSubmitAttempt?.result;
   const successPage = location.pathname === '/eportal/success.jsp' &&
     !!new URLSearchParams(location.search).get('userIndex');
@@ -114,7 +137,7 @@
     // A rejected known account button must not bypass its handler check via generic text matching.
     submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : gportalForm ? gportalButton : portalButton || zportalButton || accountButton || domainAccountButton || idSubmit ||
       [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
-        .find(e => e !== accountCandidate && e.id !== 'submit' && (e.type === 'submit' || /^(立即登录|立即登陆|登录|登陆|认证|连接|login|log in|sign in|connect)(\s*(login|登录|登陆))?$/i.test((e.innerText || e.value || '').trim())));
+        .find(e => e !== accountCandidate && e.id !== 'submit' && (e.type === 'submit' || /^(立即登录|立即登陆|登录|登陆|认证|连接|login|signin|connect)(login|登录|登陆)?$/i.test((e.innerText || e.value || '').replace(/\s+/g, ''))));
   } catch (_) { return 'invalid-selector'; }
   if (!available(user) || !available(pass)) return 'missing-fields';
   /*CAMPUS_ACCOUNT*/
