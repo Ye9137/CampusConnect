@@ -25,7 +25,7 @@ Unicode true
   !define RUNTIME "win-x64"
 !endif
 !ifndef VERSION
-  !define VERSION "2.2.3-preview.1"
+  !define VERSION "2.2.3"
 !endif
 !ifndef SIZE_KB
   !define SIZE_KB 0
@@ -47,7 +47,7 @@ SetCompressor /FINAL zlib
 ShowInstDetails show
 ShowUninstDetails show
 BrandingText "By Ye · 禁止商用，商用须经作者授权"
-VIProductVersion "2.2.3.1"
+VIProductVersion "2.2.3.0"
 !define MUI_ICON "../source/AppIcon.ico"
 !define MUI_UNICON "../source/AppIcon.ico"
 VIAddVersionKey /LANG=2052 "ProductName" "校园Wi-Fi小助手安装程序"

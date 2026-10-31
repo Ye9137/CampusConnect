@@ -83,7 +83,7 @@ def main():
     command = [args.makensis, switch + 'INPUTCHARSET', 'UTF8', switch + 'V3', switch + 'WX']
     for key, value in {'PAYLOAD': payload, 'OUTPUT': output, 'DELETE_MANIFEST': manifest, 'INSTALL_MANIFEST': install_manifest,
                        'BOOTSTRAPPER': bootstrapper, 'DESKTOP_RUNTIME': desktop_runtime,
-                       'RUNTIME': args.runtime, 'VERSION': '2.2.3-preview.1', 'SIZE_KB': (size + 1023) // 1024}.items():
+                       'RUNTIME': args.runtime, 'VERSION': '2.2.3', 'SIZE_KB': (size + 1023) // 1024}.items():
         command.append(switch + 'D' + key + '=' + str(value))
     command.append(str(directory / 'CampusConnect.nsi'))
     environment = os.environ.copy()
