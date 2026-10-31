@@ -48,11 +48,13 @@ internal static class DrcomBrowserTests
                 expect(!popup.IsDisposed && !Popups()[popup].Visible && server.Logouts == 0,
                     "closing the status UI hides it without unloading or logging out");
 
-                // The school's unload handler replaces its window with :9002/0.
-                popup.CoreWebView2.Navigate("http://127.0.0.1:9002/replace");
+                // Exercise the school's replacement handler directly. Modern
+                // Chromium can suppress window.open during actual unload.
+                try { await popup.CoreWebView2.ExecuteScriptAsync("ee()"); }
+                catch (System.Runtime.InteropServices.COMException) { /* ee closes its own document. */ }
                 await Until(() => Task.FromResult(Popups().Keys.Any(p => !p.IsDisposed && p.CoreWebView2.Source == "http://127.0.0.1:9002/0")));
                 await portal.OpenAsync(profile, "fixture-secret", automaticRetry: true);
-                expect(server.Posts.Count == 1 && server.Logouts == 0, "onUnload replacement status window stays independent and prevents duplicate login");
+                expect(server.Posts.Count == 1 && server.Logouts == 0, "school replacement handler keeps its new status window independent and prevents duplicate login");
                 portal.Stop(clearView: false);
                 expect(Popups().Count == 0 && !portal.IsActive, "Stop disposes all status windows and cancels popup callbacks");
 
@@ -66,7 +68,7 @@ internal static class DrcomBrowserTests
         Application.Run(form);
         portal.View.Dispose();
         if (failure is not null) throw new Exception("Native Dr.COM browser test failed.", failure);
-        Console.WriteLine("PASS: production Dr.COM WebView2 popup, main POST, cross-port success, automatic retry deduplication, window hiding, onUnload replacement and Stop cleanup.");
+        Console.WriteLine("PASS: production Dr.COM WebView2 popup, main POST, cross-port success, automatic retry deduplication, window hiding, school replacement handler and Stop cleanup.");
     }
 
     private static async Task Until(Func<Task<bool>> ready)
