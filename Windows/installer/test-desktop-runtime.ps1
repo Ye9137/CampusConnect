@@ -20,14 +20,17 @@ function Assert-Fails([scriptblock]$Action) {
     try { & $Action | Out-Null } catch { $failed = $true }
     Assert $failed 'Expected failure was accepted.'
 }
+$script:repairStarts = 0
+$script:repairFiles = $false
 $script:starts = 0
 $script:exitCode = 0
 $script:installFiles = $true
 $script:cancel = $false
-function Start-DesktopRuntimeInstaller([string]$Path, [switch]$Silent) {
+function Start-DesktopRuntimeInstaller([string]$Path, [switch]$Silent, [switch]$Repair) {
     $script:starts++
+    if ($Repair) { $script:repairStarts++ }
     if ($script:cancel) { throw (New-Object ComponentModel.Win32Exception 1223) }
-    if ($script:installFiles) { Add-Runtime '10.0.14' }
+    if ($script:installFiles -or ($Repair -and $script:repairFiles)) { Add-Runtime '10.0.14' }
     return $script:exitCode
 }
 try {
@@ -58,6 +61,14 @@ try {
     Assert-Fails { Install-DesktopRuntime 'x64' $RuntimeInstaller -Silent }
     $script:exitCode = 0
     Assert-Fails { Install-DesktopRuntime 'x64' $RuntimeInstaller -Silent }
+    $script:repairFiles = $true
+    $beforeRepair = $script:repairStarts
+    Assert ((Install-DesktopRuntime 'x64' $RuntimeInstaller -Silent) -eq 0) 'Registered runtime with missing files was not repaired.'
+    Assert ($script:repairStarts -eq $beforeRepair + 1) 'Incomplete install must repair exactly once.'
+    Remove-Item -LiteralPath $script:roots.x64 -Recurse -Force
+    $script:exitCode = 3010
+    Assert ((Install-DesktopRuntime 'x64' $RuntimeInstaller -Silent) -eq 3010) 'Repair reboot-required result was lost.'
+    Remove-Item -LiteralPath $script:roots.x64 -Recurse -Force
     $script:cancel = $true
     Assert-Fails { Install-DesktopRuntime 'x64' $RuntimeInstaller -Silent }
     $tampered = Join-Path $sandbox 'tampered.exe'

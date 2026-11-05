@@ -47,11 +47,12 @@ function Test-DesktopRuntime([string]$Architecture, [version]$Minimum) {
     return $false
 }
 
-function Start-DesktopRuntimeInstaller([string]$Path, [switch]$Silent) {
+function Start-DesktopRuntimeInstaller([string]$Path, [switch]$Silent, [switch]$Repair) {
     $mode = if ($Silent) { '/quiet' } else { '/passive' }
     # Microsoft's signed bootstrapper requests UAC only for its machine components;
     # CampusConnect itself stays installed for the original, unelevated user.
-    $process = Start-Process -FilePath $Path -ArgumentList '/install', $mode, '/norestart' -Wait -PassThru
+    $action = if ($Repair) { '/repair' } else { '/install' }
+    $process = Start-Process -FilePath $Path -ArgumentList $action, $mode, '/norestart' -Wait -PassThru
     return $process.ExitCode
 }
 
@@ -73,10 +74,21 @@ function Install-DesktopRuntime([string]$Architecture, [string]$Path, [switch]$S
     }
     Write-Host "Installing bundled .NET Desktop Runtime $minimum ($Architecture), without downloading."
     $result = Start-DesktopRuntimeInstaller $Path -Silent:$Silent
-    if ($result -notin @(0, 3010, 1641) -or -not (Test-DesktopRuntime $Architecture $minimum)) {
+    if ($result -notin @(0, 3010, 1641)) {
         throw "Desktop Runtime installation failed or was cancelled (exit $result)."
     }
-    if ($result -in @(3010, 1641)) { return 3010 }
+    $reboot = $result -in @(3010, 1641)
+    if (-not (Test-DesktopRuntime $Architecture $minimum)) {
+        # MSI registration can survive missing runtime files. A successful
+        # install may then be a no-op; repair the same verified bundle once.
+        Write-Host 'Runtime files remain incomplete; repairing the bundled Microsoft runtime.'
+        $result = Start-DesktopRuntimeInstaller $Path -Silent:$Silent -Repair
+        if ($result -notin @(0, 3010, 1641) -or -not (Test-DesktopRuntime $Architecture $minimum)) {
+            throw "Desktop Runtime repair failed or was cancelled (exit $result)."
+        }
+        $reboot = $reboot -or $result -in @(3010, 1641)
+    }
+    if ($reboot) { return 3010 }
     return 0
 }
 
