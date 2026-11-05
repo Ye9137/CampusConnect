@@ -591,6 +591,20 @@ enum PortalScript {
                 if (sibling?.nodeType === 3) names.push(sibling.textContent);
                 if (sibling?.nodeType === 1 && sibling.matches('font,span,label') &&
                     !sibling.querySelector('input,button,[role="radio"]')) names.push(sibling.textContent);
+                // Inspected HTU skin renders empty labels with CSS carrier icons.
+                // Match its account panel, radio value AND icon; short values alone
+                // are not carrier names on unrelated portals.
+                const carrier = {yd:['yidong','移动','中国移动'], lt:['liantong','联通','中国联通'],
+                  dx:['dianxin','电信','中国电信']}[control.value];
+                const panel = control.closest('#account-login');
+                if (carrier && control instanceof HTMLInputElement && control.name === 'operator' &&
+                    panel?.querySelector('input#userName[name="userName"]') === user &&
+                    panel.querySelector('input#password[type="password"]') === pass &&
+                    control.closest('.loginWay') && wrapper?.querySelector('i.' + carrier[0]) &&
+                    !control.closest('[hidden],[inert]') &&
+                    !['hidden','collapse'].includes(getComputedStyle(wrapper).visibility)) {
+                  names.push(...carrier.slice(1));
+                }
                 return names.some(name => normalized(name) === serviceName);
               });
               const choices = serviceSelects

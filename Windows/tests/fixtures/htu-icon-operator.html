@@ -1,0 +1,48 @@
+<!doctype html><meta charset="utf-8"><title>校园网登录</title>
+<!-- Account markup supplied for 河南师范大学; scripts below only simulate handlers. -->
+<style>.loginWay label{display:inline-block;width:110px;height:30px}.loginWay input{display:none}.loginWay i{display:inline-block;width:65px;height:20px}</style>
+<form name="loginportalform"><input id="loginsubmit" type="button" hidden><input type="checkbox" id="read" checked hidden></form>
+        <div class="login-content active" id="account-login">
+            <div class="loginLabel" data-text-key="LOGIN_TAB_LABEL_ONE">上网账号</div>
+            <div class="loginList">
+                <!--                    <i class="userIcon"></i>-->
+                <input type="text" id="userName" name="userName" data-placeholder-key="USER_NAME_PLACEHOLDER" placeholder="请输入您的上网账号">
+                <input type="hidden" id="userid" name="userid" placeholder="输入 登录名">
+            </div>
+            <div class="loginLabel" data-text-key="LOGIN_TAB_LABEL_TWO">上网密码</div>
+            <div class="loginList">
+                <!--                    <i class="psdIcon"></i>-->
+                <input id="password" name="password" type="password" data-placeholder-key="PASSWORD_PLACEHOLDER" placeholder="请输入您的上网密码">
+                <input type="hidden" id="passwd" name="passwd" placeholder="输入 密码">
+                <img src="./front/images/close-eye.png" alt="隐藏密码" class="toggleImg" id="toggleImg">
+            </div>
+            <div id="rememberPasswordDiv">
+                <input id="rememberPassword" type="checkbox">
+                <span>记住密码</span>
+            </div>
+            <div class="loginWay">
+                     <span style="display: none;"><label><em></em><input type="radio" name="operator" value="jzg"><i class="jiaozhigong"></i></label></span>
+                <span style="display: none;"><label><em></em><input type="radio" name="operator" value="xnzy"><i class="ziyuan"></i></label></span>
+                <span style="width: 100%; height: 10px;"></span>
+                <span class=""><label><em></em><input type="radio" name="operator" value="yd"><i class="yidong"></i></label></span>
+                <span><label><em></em><input type="radio" name="operator" value="lt"><i class="liantong"></i></label></span>
+                <span><label><em></em><input type="radio" name="operator" value="dx"><i class="dianxin"></i></label></span>
+            </div>
+            <div><input class="loginBtn" id="loginBtn" type="button" data-value-key="LOGIN_BTN_VALUE" value="立即登录"></div>
+            <div class="forgetPsd">
+                <img src="./front/images/login_lock.png">
+                <a id="resetPassword" style="display: block;" data-text-key="RESET_PASSWORD">修改/忘记密码</a>
+            </div>
+            <img id="update-password" style="position: absolute; width: 210px; top: 48%; right: 13%; display: none;" src="./front/images/update-password.png">
+        </div>
+
+<div id="quick-login" hidden><input id="quickName"><button id="fastLoginBtn">快速体验</button></div>
+<div hidden><input id="bindCtrlDxId"><input type="password" id="bindCtrlDxNo"></div>
+<script>
+window.operatorEvents=[];window.loginCalls=[];
+for(const radio of document.querySelectorAll('[name=operator]')) radio.addEventListener('change',()=>operatorEvents.push(radio.value));
+loginBtn.onclick=()=>{
+  userid.value=userName.value;passwd.value=password.value;
+  loginCalls.push([userid.value,passwd.value,document.querySelector('[name=operator]:checked')?.value||'']);
+};
+</script>
