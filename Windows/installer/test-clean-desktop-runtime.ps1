@@ -57,6 +57,22 @@ try {
     if ($process.ExitCode -ne 0) { throw 'Clean-machine app uninstall failed.' }
     if (-not (Test-DesktopRuntime 'x64' $minimum)) { throw 'App uninstall removed the shared Desktop Runtime.' }
     Write-Host 'PASS: real missing-runtime setup, official offline installation, native app startup, and shared runtime preserved after uninstall.'
+} catch {
+    # Keep evidence from the disposable runner when setup aborts silently.
+    $failure = $_
+    foreach ($root in $roots) {
+        Write-Host "Runtime root: $root"
+        Get-ChildItem (Join-Path $root 'shared') -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Parent.Name -in @('Microsoft.WindowsDesktop.App', 'Microsoft.NETCore.App') } |
+            ForEach-Object { Write-Host $_.FullName }
+    }
+    $diagnostics = Join-Path $PSScriptRoot 'work\smoke-diagnostics\runtime'
+    New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
+    $failure | Out-String | Set-Content (Join-Path $diagnostics 'setup-failure.txt')
+    Get-ChildItem ([IO.Path]::GetTempPath()) -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-30) } |
+        Copy-Item -Destination $diagnostics -ErrorAction SilentlyContinue
+    throw $failure
 } finally {
     Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
 }

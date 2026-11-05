@@ -106,7 +106,10 @@ jobs:
           name: native-test-diagnostics-${{ matrix.runtime }}
           path: Windows/installer/work/smoke-diagnostics/
           if-no-files-found: ignore
+      # Preserve a build for diagnostics even if later acceptance checks fail.
+      # Failed runs remain failed and these artifacts are never Releases.
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: CampusConnect-Setup-${{ matrix.runtime }}
           path: Windows/installer/dist/*-Setup.exe
