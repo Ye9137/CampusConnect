@@ -131,7 +131,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
             </div>
             <div class="row"><button data-action="ethernetSettings">打开以太网设置</button><button data-action="networkConnections">配置系统网络连接</button></div>
           </div>
-          <label class="field" id="ssid-field">Wi-Fi 名称<input id="ssid" placeholder="输入校园 Wi-Fi 名称" maxlength="32" autocomplete="off"></label>
+          <label class="field" id="ssid-field">主用 Wi-Fi 名称<input id="ssid" placeholder="输入校园 Wi-Fi 名称" maxlength="32" autocomplete="off"></label>
           <div class="segment" id="wifi-mode" role="group" aria-label="Wi-Fi 认证方式"><button data-mode="open" class="active">开放网络</button><button data-mode="saved">使用 Windows 已保存的配置</button></div>
           <div class="settings-note" id="join-help">请填写校园 Wi-Fi 名称；学号和上网密码在下方网页认证中填写。</div>
           <button id="wifi-settings" data-action="wifiSettings" style="align-self:flex-start" hidden>打开 Windows Wi-Fi 设置</button>
@@ -147,6 +147,22 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
 
           </div>
         </div>
+        <div class="card stack" id="backup-card">
+          <h3 class="section-title"><i data-icon="wifi"></i>备用 Wi-Fi</h3>
+          <label class="field">备用 Wi-Fi 名称（可留空）<input id="backupSsid" list="backup-networks" placeholder="输入或选择附近网络" maxlength="32" autocomplete="off"></label>
+          <datalist id="backup-networks"></datalist>
+          <div class="settings-note">主用断开或连不上时尝试备用。备用已连接时会继续使用。</div>
+          <div id="backup-options" class="stack" hidden>
+            <label class="check"><input id="backupSaved" type="checkbox">使用 Windows 已保存的 Wi-Fi 配置（加密网络）</label>
+            <label class="check"><input id="backupPortalEnabled" type="checkbox">连接备用 Wi-Fi 后进行网页认证</label>
+            <div id="backup-portal-fields" class="stack" hidden>
+              <label class="field">备用网络认证页面地址<input id="backupPortalUrl" placeholder="输入备用网络的认证地址" autocomplete="off"></label>
+              <div class="field-row"><label class="field">备用网络上网账号<input id="backupUsername" autocomplete="off"></label><label class="field">备用网络上网密码<input id="backupPassword" type="password" autocomplete="new-password"></label></div>
+              <label class="field">备用网络运营商 / 服务选项<input id="backupServiceOption" placeholder="认证网页要求选择时填写完整名称" autocomplete="off"></label>
+              <label class="check"><input id="backupAutoSubmit" type="checkbox" checked>自动填写后点击登录</label>
+            </div>
+          </div>
+        </div>
         <div class="settings-actions"><button class="primary" id="save-enable">保存并开启自动连接</button><button id="save">保存设置</button><span class="muted">密码保存在本机</span></div>
         <div class="settings-note">修改后点击保存。下次打开会沿用已保存的账号和密码。</div>
       </div>
@@ -158,7 +174,7 @@ select {font:inherit;border:1px solid var(--border,#ddd);border-radius:8px;paddi
       <div class="portal-slot" id="portal-slot"><div class="hint"><i data-icon="globe"></i><p>学校认证页面将在这里打开<br><span id="portal-connection-hint">请先连接已设置的校园 Wi-Fi</span></p></div></div>
     </section>
   </div>
-  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.2.4 · Windows</span></footer>
+  <footer class="footer"><span class="dot" id="status-dot"></span><span class="status" id="status">准备就绪</span><span class="version">v2.2.5 · Windows</span></footer>
 </main>
 </div>
 <script>
@@ -177,7 +193,7 @@ const svg = key => '<svg viewBox="0 0 24 24" aria-hidden="true">' + icons[key] +
 document.querySelectorAll('[data-icon]').forEach(e => {e.innerHTML=svg(e.dataset.icon);});
 const byId = id => document.getElementById(id);
 const titles = {dashboard:['网络概览','到达校园，连接自动完成。'],settings:['校园网设置','设置目标网络、账号和上网认证方式。'],portal:['上网认证','在校园网内打开登录页并填写已保存的凭据。']};
-let page='dashboard', mode='open', automatic=false, state={}, dirty=false, draftConnection='wifi', connectionDrafts={};
+let page='dashboard', mode='open', automatic=false, state={}, dirty=false, draftConnection='wifi', connectionDrafts={}, backupDirty=false;
 let boundsFrame=0, lastBounds='', networkRenderKey=null, systemChoicesKey='';
 let transitionId=0, transitioning=false, pageAnimations=[];
 const nav=document.querySelector('.nav');
@@ -227,6 +243,7 @@ function setMode(next) {
  const wired=draftConnection==='wired';
  byId('wifi-mode').hidden=wired;
  byId('ssid-field').hidden=wired;
+ byId('backup-card').hidden=wired;
  setIcon('settings-network-icon',wired?'network':'wifi');
  document.querySelectorAll('[data-connection]').forEach(e=>{
    const active=e.dataset.connection===(wired?'wired':'wifi');
@@ -272,9 +289,30 @@ function loadProfile(p,password) {
  byId('password').value=password||'';byId('portalEnabled').checked=p.portalEnabled;byId('autoSubmit').checked=p.autoSubmit;
  byId('portal-fields').hidden=!p.portalEnabled;setMode(p.useSavedWifiProfile?'saved':'open');automatic=p.automatic;dirty=false;
 }
+function renderBackupFields() {
+ byId('backup-options').hidden=!byId('backupSsid').value.trim();
+ byId('backup-portal-fields').hidden=!byId('backupPortalEnabled').checked;
+}
+function readBackup() {
+ const profile={connectionMode:'wifi',useSavedWifiProfile:byId('backupSaved').checked,portalEnabled:byId('backupPortalEnabled').checked,autoSubmit:byId('backupAutoSubmit').checked};
+ for(const key of ['Ssid','PortalUrl','Username','ServiceOption'])profile[key[0].toLowerCase()+key.slice(1)]=byId('backup'+key).value;
+ return {profile,password:byId('backupPassword').value};
+}
+function loadBackup(entry) {
+ const p=entry?.profile||{};
+ for(const key of ['Ssid','PortalUrl','Username','ServiceOption'])byId('backup'+key).value=p[key[0].toLowerCase()+key.slice(1)]||'';
+ byId('backupPassword').value=entry?.password||'';
+ byId('backupSaved').checked=!!p.useSavedWifiProfile;
+ byId('backupPortalEnabled').checked=!!p.portalEnabled;
+ byId('backupAutoSubmit').checked=p.autoSubmit!==false;
+ renderBackupFields();
+}
+function savePayload(p) {
+ return {profile:p,password:byId('password').value,backup:readBackup()};
+}
 function snapshot() {
  const active=currentDraft();
- return {...active,connectionDrafts:{...connectionDrafts,[draftConnection]:active}};
+ return {...active,backup:readBackup(),backupDirty,connectionDrafts:{...connectionDrafts,[draftConnection]:active}};
 }
 function checkpoint() {post('draft',{snapshot:snapshot()});}
 function textNode(tag,text,className) { const e=document.createElement(tag);e.textContent=text;if(className)e.className=className;return e; }
@@ -295,9 +333,9 @@ function renderConnectionPresentation() {
 function update(s) {
  state=s;automatic=s.automatic;renderConnectionPresentation();
  setText('status',s.status||'');setText('connection-title',s.connectionTitle||'');
- setText('target',s.target||'尚未设置');
+ setText('target',s.backupTarget?`主用 ${s.target} · 备用 ${s.backupTarget}`:s.target||'尚未设置');
  const descriptions={web:'接入有线网络后，每 5 秒检查连接状态，断线后使用已保存账号重新认证。',pppoe:'接入有线网络后，拨打所选 Windows 宽带连接。',dot1x:'接入有线网络后，按系统配置发起 802.1X 认证。',client:'接入有线网络后，打开所选学校客户端并检测联网状态。'};
- setText('auto-description',!s.automatic?'自动连接已关闭，不进行后台网络检查。':s.wiredMode?descriptions[s.wiredAuth||'web']:s.target?`每 5 秒检查 ${s.target} 的连接状态，断线后重新连接并认证。`:'请先在校园网设置中保存网络信息。');
+ setText('auto-description',!s.automatic?'自动连接已关闭，不进行后台网络检查。':s.wiredMode?descriptions[s.wiredAuth||'web']:s.backupTarget?'主用断开或连不上时自动尝试备用 Wi-Fi。':s.target?`每 5 秒检查 ${s.target} 的连接状态，断线后重新连接并认证。`:'请先在校园网设置中保存网络信息。');
  setText('network-heading',s.wiredMode?'有线模式':'附近网络');byId('automatic').checked=s.automatic;
  setDisabled(byId('automatic'),s.busy);byId('busy').hidden=!s.busy;byId('permission-card').hidden=s.wiredMode||!s.permissionNeeded;
  byId('status-dot').classList.toggle('online',s.internetOnline===true);
@@ -322,7 +360,7 @@ function renderActivePage() {
  if(page==='dashboard')renderNetworks(state);
 }
 function renderNetworks(s) {
- const key=JSON.stringify([s.target,s.wiredMode,s.currentSsid,s.permissionNeeded,s.networks||[]]);
+ const key=JSON.stringify([s.target,s.backupTarget,s.wiredMode,s.currentSsid,s.permissionNeeded,s.networks||[]]);
  const list=byId('networks');
  if(key===networkRenderKey){list.querySelectorAll('button').forEach(e=>setDisabled(e,s.busy));return;}
  networkRenderKey=key;
@@ -338,6 +376,7 @@ function renderNetworks(s) {
  const rows=new Map([...list.querySelectorAll('.network-row')].map(row=>[row.dataset.ssid,row]));
  const keep=new Set(s.networks.map(n=>n.ssid));
  for(const child of [...list.children])if(!keep.has(child.dataset.ssid))child.remove();
+ byId('backup-networks').replaceChildren(...s.networks.filter(n=>n.ssid!==s.target).map(n=>new Option(n.ssid)));
  let index=0;
  for(const n of s.networks) {
    let row=rows.get(n.ssid);
@@ -355,10 +394,14 @@ function renderNetworks(s) {
      });row.append(button);
    }
    row.dataset.secure=String(!!n.secure);
-   const target=n.ssid===s.target,name=row.querySelector('.network-title');
-   if(row.classList.contains('target-network')!==target)row.classList.toggle('target-network',target);
-   if(target&&!name.querySelector('.badge'))name.append(textNode('span','校园网','badge'));
-   else if(!target)name.querySelector('.badge')?.remove();
+   const primary=n.ssid===s.target, backup=n.ssid===s.backupTarget, name=row.querySelector('.network-title');
+   row.classList.toggle('target-network',primary||backup);
+   const label=backup?'备用':primary?(s.backupTarget?'主用':'校园网'):'';
+   const badge=name.querySelector('.badge');
+   if(label){
+     if(badge){if(badge.textContent!==label)badge.textContent=label;}
+     else name.append(textNode('span',label,'badge'));
+   }else badge?.remove();
    const subtitle=row.querySelector('.network-subtitle'),text=(n.secure?'加密':'开放')+' · '+n.signal+'%';
    if(subtitle.textContent!==text)subtitle.textContent=text;
    const button=row.querySelector('button'),connected=row.querySelector('.connected');
@@ -376,7 +419,9 @@ function renderNetworks(s) {
 function receive(message) {
  if(message.kind==='guide'){
    go('settings');
-   const field=['serviceOption','portalUrl','username'].includes(message.field)?byId(message.field):null;
+   if(message.backup)selectConnection('wifi');
+   const fieldId=message.backup&&message.field?'backup'+message.field[0].toUpperCase()+message.field.slice(1):message.field;
+   const field=['serviceOption','portalUrl','username','backupServiceOption','backupPortalUrl','backupUsername'].includes(fieldId)?byId(fieldId):null;
    if(field)requestAnimationFrame(()=>{field.scrollIntoView({block:'center'});field.focus({preventScroll:true});});
  }
  if(message.kind==='state')update(message.state);
@@ -388,20 +433,29 @@ function receive(message) {
  if(message.kind==='profile'){
    for(const key of ['wifi','wired'])if(message.profiles?.[key]&&!connectionDrafts[key]?.dirty)connectionDrafts[key]=message.profiles[key];
    loadProfile(message.profile,message.password);
+   if(draftConnection==='wifi'||!backupDirty){
+     loadBackup(message.profiles?.['wifi-backup']);backupDirty=false;
+   }
    connectionDrafts[draftConnection]=currentDraft();checkpoint();
  }
  if(message.kind==='restore'){
    const s=message.snapshot;
    if(s?.connectionDrafts)connectionDrafts={...connectionDrafts,...s.connectionDrafts};
+   if(s?.backup&&s.backupDirty){loadBackup(s.backup);backupDirty=true;}
    if(s?.dirty&&s.profile){loadProfile({...s.profile,automatic:state.automatic},s.password);dirty=true;}
    go(message.page);
    checkpoint();post('hydrated');
  }
  if(message.kind==='page')go(message.page);
  if(message.kind==='authClient'){byId('authenticationClient').value=message.path;dirty=true;checkpoint();}
- if(message.kind==='address'){byId('portalUrl').value=message.address;dirty=true;checkpoint();go('settings');}
+ if(message.kind==='address'){
+   if(message.backup){selectConnection('wifi');byId('backupPortalUrl').value=message.address;backupDirty=true;}
+   else byId('portalUrl').value=message.address;
+   dirty=true;checkpoint();go('settings');
+ }
 }
 byId('ssid').addEventListener('input',()=>setMode(mode));
+byId('backup-card').addEventListener('input',()=>{backupDirty=true;renderBackupFields();});
 byId('wiredAuth').addEventListener('change',()=>{renderAuthenticationFields();dirty=true;checkpoint();});
 document.querySelectorAll('[data-connection]').forEach(e=>e.addEventListener('click',()=>selectConnection(e.dataset.connection)));
 window.campus={receive,snapshot};
@@ -422,10 +476,10 @@ byId('page-settings').addEventListener('change',e=>{if(e.target.id!=='startup'){
 byId('portalEnabled').addEventListener('change',()=>{byId('portal-fields').hidden=!byId('portalEnabled').checked;});
 byId('automatic').addEventListener('change',()=>{
  const enabled=byId('automatic').checked;
- post('setAutomatic',{enabled,profile:profile(),password:byId('password').value});
+ post('setAutomatic',{enabled,...savePayload(profile())});
 });
-byId('save').addEventListener('click',()=>post('save',{profile:profile(),password:byId('password').value}));
-byId('save-enable').addEventListener('click',()=>post('save',{profile:{...profile(),automatic:true},password:byId('password').value}));
+byId('save').addEventListener('click',()=>post('save',savePayload(profile())));
+byId('save-enable').addEventListener('click',()=>post('save',savePayload({...profile(),automatic:true})));
 new ResizeObserver(scheduleBounds).observe(byId('portal-slot'));
 window.addEventListener('resize',scheduleBounds);
 

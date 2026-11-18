@@ -121,17 +121,25 @@ public enum AutomaticNetworkWork { Stopped, OtherNetwork, FindTarget, CheckInter
 
 public sealed class AutoPolicy
 {
-    public static AutomaticNetworkWork BackgroundWork(bool enabled, bool wired, string target, string? current)
+    public static AutomaticNetworkWork BackgroundWork(bool enabled, bool wired, string target, string? current, string? backup = null)
         => !enabled || (!wired && string.IsNullOrWhiteSpace(target)) ? AutomaticNetworkWork.Stopped
-            : wired || current == target ? AutomaticNetworkWork.CheckInternet
+            : wired || current == target || backup is not null && current == backup ? AutomaticNetworkWork.CheckInternet
             : !string.IsNullOrEmpty(current) ? AutomaticNetworkWork.OtherNetwork : AutomaticNetworkWork.FindTarget;
+    public static IEnumerable<CampusProfile> WifiCandidates(CampusProfile primary, CampusProfile? backup, IEnumerable<string> visible)
+    {
+        var networks = visible.ToHashSet(StringComparer.Ordinal);
+        if (networks.Contains(primary.Ssid)) yield return primary;
+        if (backup is not null && networks.Contains(backup.Ssid)) yield return backup;
+    }
+
     public const int NetworkCheckIntervalMilliseconds = 5000;
     public static readonly TimeSpan WifiScanInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan InternetCheckInterval = TimeSpan.FromSeconds(5);
     public DateTimeOffset LastAttempt { get; private set; } = DateTimeOffset.MinValue;
     public bool ShouldJoin(bool enabled, string target, string? current, IEnumerable<string> visible, bool busy, DateTimeOffset now)
         => enabled && target.Length > 0 && string.IsNullOrEmpty(current) && visible.Contains(target, StringComparer.Ordinal)
-            && !busy && now - LastAttempt >= TimeSpan.FromMilliseconds(NetworkCheckIntervalMilliseconds);
+            && !busy && WifiRetryDue(now);
+    internal bool WifiRetryDue(DateTimeOffset now) => now - LastAttempt >= TimeSpan.FromMilliseconds(NetworkCheckIntervalMilliseconds);
     public bool ShouldPrepareWired(bool enabled, bool needed, bool busy, DateTimeOffset now)
         => enabled && needed && !busy && now - LastAttempt >= TimeSpan.FromSeconds(60);
     public void Begin(DateTimeOffset now) => LastAttempt = now;
@@ -230,12 +238,47 @@ public static class PortalScript
           if (location.origin !== cfg.origin || document.readyState === 'loading') return false;
           try {
             const inputs = document.querySelectorAll(cfg.passwordSelector || 'input[type="password"]');
-            return [...inputs].some(input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly &&
-              (input.getClientRects().length > 0 ||
+            const visible = element => element.getClientRects().length > 0 &&
+              !element.closest('[hidden],[inert]') &&
+              !['hidden', 'collapse'].includes(getComputedStyle(element).visibility);
+            const passwords = [...inputs].filter(input => input instanceof HTMLInputElement && !input.disabled && !input.readOnly &&
+              (visible(input) ||
                (input.id === 'pwd' && (document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1'))?.getClientRects().length > 0) ||
                (input.id === 'password' && input.form?.id === 'login_form' &&
                 input.form.querySelector('#user_name[name="username"]') && input.form.querySelector('#login_submit') &&
                 input.form.querySelector('input#tx[type="text"]')?.getClientRects().length > 0)));
+
+            // Portals with separate identity and internet account tabs may not
+            // render the internet account form until their own tab handler runs.
+            const accountLabels = [...document.querySelectorAll('[role="tab"], a, button, li, div, span, label, td')]
+              .filter(element => /^上网[账帐帳]号登[录陆]$/.test(element.textContent.replace(/\s/g, '')) && visible(element));
+            if (!accountLabels.length) return passwords.length > 0;
+            const controls = new Set(accountLabels
+              .filter(element => !accountLabels.some(other => element !== other && element.contains(other)))
+              .map(label => {
+                const control = label.closest('[role="tab"], a, button, li, [onclick], [aria-selected], [aria-controls], .active, .selected, .current, .layui-this');
+                return accountLabels.includes(control) ? control : label;
+              }));
+            if (controls.size !== 1) return false;
+            const [tab] = controls;
+            if (tab.closest(':disabled,[aria-disabled="true"]')) return false;
+            const panelId = tab.getAttribute('aria-controls');
+            const panel = panelId && document.getElementById(panelId);
+            const selected = tab.getAttribute('aria-selected');
+            if (selected === 'true' || (selected === null && tab.matches('.active,.selected,.current,.layui-this')))
+              return passwords.some(input => !panelId || panel?.contains(input));
+
+            const attempts = window.__campusAccountTabAttempts ||= new WeakMap();
+            if (!attempts.has(tab)) {
+              if (document.readyState !== 'complete') return false;
+              attempts.set(tab, passwords);
+              tab.click();
+              return false;
+            }
+            if (selected === 'false') return false;
+            // Older portals omit selection attributes. Wait for the newly
+            // exposed password field before proceeding with credential filling.
+            return passwords.some(input => panelId ? panel?.contains(input) : !attempts.get(tab).includes(input));
           } catch (_) { return true; } // Let the normal script report invalid selectors.
         })()
         """.Replace("/*PROBE*/", config, StringComparison.Ordinal);

@@ -7,6 +7,16 @@ internal sealed record UserConnection(CampusProfile Profile, string Password);
 internal sealed record ConnectionConfiguration(CampusProfile Profile, string ProtectedPassword,
     Dictionary<string, StoredConnection>? Profiles = null)
 {
+    internal const string BackupWifiKey = "wifi-backup";
+
+    internal ConnectionConfiguration WithBackupWifi(StoredConnection? backup)
+    {
+        var entries = AllProfiles();
+        if (backup is null) entries.Remove(BackupWifiKey);
+        else entries[BackupWifiKey] = backup;
+        return this with { Profiles = entries };
+    }
+
     internal Dictionary<string, StoredConnection> AllProfiles()
     {
         var result = Profiles is null ? new Dictionary<string, StoredConnection>() : new(Profiles);

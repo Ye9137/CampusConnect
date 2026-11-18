@@ -20,18 +20,19 @@ internal sealed class WifiService : IDisposable
 
     // Opening a WLAN handle and even querying the current connection can wait
     // on a driver/service. Keep the entire handle lifetime off the UI thread.
-    public static Task<string?> ReadCurrentAsync(string? preferred = null) => Task.Run(() => {
+    public static Task<string?> ReadCurrentAsync(string? preferred = null) => ReadCurrentAsync(preferred, null);
+    public static Task<string?> ReadCurrentAsync(string? preferred, string? alternate) => Task.Run(() => {
         using var wifi = new WifiService();
-        return wifi.CurrentSsid(preferred);
+        return wifi.CurrentSsid(preferred, alternate);
     });
     public static Task<Guid?> ReadInterfaceAsync(string ssid) => Task.Run(() => {
         using var wifi = new WifiService();
         var connection = wifi.CurrentConnection(ssid);
         return connection.Ssid == ssid ? connection.InterfaceId : null;
     });
-    public static Task<WifiSnapshot> ReadSnapshotAsync(string? preferred = null, bool scan = true, bool waitForScan = true) => Task.Run(async () => {
+    public static Task<WifiSnapshot> ReadSnapshotAsync(string? preferred = null, bool scan = true, bool waitForScan = true, string? alternate = null) => Task.Run(async () => {
         using var wifi = new WifiService();
-        return await wifi.ScanAsync(preferred, scan, waitForScan).ConfigureAwait(false);
+        return await wifi.ScanAsync(preferred, scan, waitForScan, alternate).ConfigureAwait(false);
     });
     public static Task JoinAsync(CampusProfile profile, WifiSnapshot snapshot, bool allowSwitch = false) => Task.Run(async () => {
         using var wifi = new WifiService();
@@ -52,8 +53,8 @@ internal sealed class WifiService : IDisposable
         for (var i = 0; i < count; i++) result.Add(Marshal.PtrToStructure<T>(IntPtr.Add(pointer, 8 + i * Marshal.SizeOf<T>())));
         return result;
     }
-    public string? CurrentSsid(string? preferred = null) => CurrentConnection(preferred).Ssid;
-    private (string? Ssid, Guid? InterfaceId) CurrentConnection(string? preferred)
+    public string? CurrentSsid(string? preferred = null, string? alternate = null) => CurrentConnection(preferred, alternate).Ssid;
+    private (string? Ssid, Guid? InterfaceId) CurrentConnection(string? preferred, string? alternate = null)
     {
         (string? Ssid, Guid? InterfaceId) first = (null, null);
         foreach (var item in Interfaces()) {
@@ -66,12 +67,12 @@ internal sealed class WifiService : IDisposable
                 if (connection.State != 1) continue;
                 var ssid = connection.Association.Ssid.Text;
                 if (ssid == preferred) return (ssid, id);
-                if (first.Ssid is null) first = (ssid, id);
+                if (first.Ssid is null || ssid == alternate) first = (ssid, id);
             } finally { WlanFreeMemory(data); }
         }
         return first;
     }
-    public async Task<WifiSnapshot> ScanAsync(string? preferred = null, bool scan = true, bool waitForScan = true)
+    public async Task<WifiSnapshot> ScanAsync(string? preferred = null, bool scan = true, bool waitForScan = true, string? alternate = null)
     {
         var interfaces = Interfaces();
         if (interfaces.Count == 0) throw new InvalidOperationException("没有找到 Wi-Fi 网卡，请检查无线网卡和 WLAN AutoConfig 服务。");
@@ -106,7 +107,7 @@ internal sealed class WifiService : IDisposable
                         networks[i] = networks[i] with { ProfileName = preferred };
             }
         }
-        var snapshot = new WifiSnapshot(CurrentSsid(preferred), networks.OrderByDescending(n => n.Signal).ToList());
+        var snapshot = new WifiSnapshot(CurrentSsid(preferred, alternate), networks.OrderByDescending(n => n.Signal).ToList());
         // WlanScan may flush its cache: read the previous result BEFORE requesting
         // a background scan. Subsequent five-second heartbeats read the new result.
         if (scan && !waitForScan) RequestScan(interfaces);
