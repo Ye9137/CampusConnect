@@ -5,7 +5,7 @@
 > [!IMPORTANT]
 > **适配范围与交流反馈**
 >
-> 本程序目前已支持 **河南工业职业技术大学**、**河南工业大学**、**郑州信息工程职业学院**、**无锡职业技术大学**、**天津石油职业技术学院**、**华东交通大学**、**南通大学**、**上海东海职业技术学院**、**内蒙古工业大学**、**佛山大学**、**广东海洋大学**、**三峡大学**、**安徽理工大学**、**四川文轩职业学院**、**石家庄铁道大学**、**河南科技大学**、**河南师范大学**、**南京信息工程大学**、**潍坊学院**、**陕西国防工业职业技术学院**、**新疆大学**、**大连职业技术学院**、**九江职业科技大学**、**[南京工业大学](https://github.com/Ye9137/CampusConnect/issues/4)**、**[重庆交通大学](https://github.com/Ye9137/CampusConnect/issues/10)**、**[南京理工大学紫金学院](https://github.com/Ye9137/CampusConnect/issues/11)** 的校园网认证，也欢迎其他学校的同学下载测试。
+> 本程序目前已支持 **河南工业职业技术大学**、**河南工业大学**、**郑州信息工程职业学院**、**无锡职业技术大学**、**天津石油职业技术学院**、**华东交通大学**、**南通大学**、**上海东海职业技术学院**、**内蒙古工业大学**、**佛山大学**、**广东海洋大学**、**三峡大学**、**安徽理工大学**、**四川文轩职业学院**、**石家庄铁道大学**、**河南科技大学**、**河南师范大学**、**南京信息工程大学**、**潍坊学院**、**陕西国防工业职业技术学院**、**新疆大学**、**大连职业技术学院**、**九江职业科技大学**、**[南京工业大学](https://github.com/Ye9137/CampusConnect/issues/4)**、**[重庆交通大学](https://github.com/Ye9137/CampusConnect/issues/10)**、**[南京理工大学紫金学院](https://github.com/Ye9137/CampusConnect/issues/11)**、**桂林航天工业学院** 的校园网认证，也欢迎其他学校的同学下载测试。
 >
 > **中国矿业大学暂不支持，该校用户请勿使用本程序。**
 >
@@ -13,7 +13,7 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows / macOS 2.2.4 正式版**：[下载安装包](https://github.com/Ye9137/CampusConnect/releases/latest) · [Windows 更新说明](Windows/2.2.4-更新说明.md) · [macOS 更新说明](macOS/2.2.4-更新说明.md)。新增河南师范大学图标运营商适配，改进 Windows Dr.COM 认证及残缺运行库修复。
+**Windows 2.2.5 正式版**：[下载安装包与更新说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.5)。新增主用 / 备用 Wi-Fi，支持先切换到「上网账号登录」再填写。**macOS 2.2.4**：[下载](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.4) · [更新说明](macOS/2.2.4-更新说明.md)。
 
 
 
@@ -25,6 +25,13 @@
 > **新版禁止商用，商业使用须事先获得作者 Ye9137 的明确书面授权。** 历史 MIT 授权及第三方许可仍按原条款适用。
 
 分别为 macOS 和 Windows 制作的桌面校园网连接工具。请在设置中填写自己的校园 Wi-Fi 和认证地址；有线与无线分别保存，未配置时保持空白。
+
+## Windows 2.2.5 正式版
+
+- 在「校园网设置」可添加备用 Wi-Fi。主用断开且重新连不上时，自动尝试备用。备用已连接时继续使用。
+- 备用网络可独立配置认证地址、上网账号密码和运营商，留空备用名称时按单网络运行。
+- 兼容需要先点击「上网账号登录」的认证页面。
+- 支持学校名单新增 **桂林航天工业学院**。已通过本地自动化测试，学校实际认证和 Windows 双 Wi-Fi 实机切换待现场验证。
 
 ## Windows / macOS 2.2.4 正式版
 
@@ -223,7 +230,7 @@ ping 使用系统路由，可能经过 VPN。提供 Windows x64 与 macOS Apple 
 
 ## 下载
 
-**[Windows 2.2.4 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.4/CampusConnect-Windows-x64-2.2.4-Setup.exe)** · **[macOS 2.2.4 通用版](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.4/CampusConnect-macOS-universal-2.2.4.zip)** · [最新版源码与校验文件](https://github.com/Ye9137/CampusConnect/releases/latest)
+**[Windows 2.2.5 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.5/CampusConnect-Windows-x64-2.2.5-Setup.exe)** · **[macOS 2.2.4 通用版](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.4/CampusConnect-macOS-universal-2.2.4.zip)** · [Windows 2.2.5 源码与发布说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.5)
 
 仅提供最新版下载，历史版本下载已关闭。
 
