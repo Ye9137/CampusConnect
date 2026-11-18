@@ -13,7 +13,7 @@ try{
  const page=await browser.newPage();let outer;
  await page.route('**/*',r=>{
   const u=new URL(r.request().url());
-  return r.fulfill({contentType:'text/html',body:u.pathname==='/login'?fixture:u.pathname==='/nested'?'<iframe src="/login" width="900" height="650"></iframe>':outer});
+  return r.fulfill({contentType:'text/html; charset=utf-8',body:u.pathname==='/login'?fixture:u.pathname==='/nested'?'<iframe src="/login" width="900" height="650"></iframe>':outer});
  });
  const load=async html=>{outer=html;await page.goto('http://portal.test/');};
  const loginFrame=()=>page.frames().find(f=>f.url()==='http://portal.test/login');
@@ -43,6 +43,41 @@ try{
   await load(`<iframe src="/login" style="${style}"></iframe>`);eq(await page.evaluate(scripts.probe),false);await empty();
  }
  await load('<iframe src="/login" width="900" height="650"></iframe><iframe src="/login" width="900" height="650"></iframe>');eq(await page.evaluate(scripts.probe),false);eq(await page.evaluate(scripts.fill),'wrong-origin');await empty();
+ // Internet account tab brings up its own form, even when the identity form is visible first.
+ for (const label of ['上网账号登录', '上网帐号登录']) {
+  await load(`<button type="button" role="tab" aria-selected="true">统一身份认证登录</button>
+    <div id="account-tab"><span>${label}</span></div>
+    <form id="identity"><input name="username"><input type="password"><button>登录</button></form>
+    <form id="account" hidden>
+      <select><option value="">请选择</option><option value="cmcc">中国移动</option></select>
+      <input name="username"><input type="password"><button type="submit">登录</button>
+    </form>
+    <script>
+      window.tabClicks = 0; window.logins = 0;
+      const identity = document.querySelector('#identity'), account = document.querySelector('#account');
+      document.querySelector('#account-tab').addEventListener('click', () => {
+        tabClicks++;
+        setTimeout(() => { identity.hidden = true; account.hidden = false; }, 100);
+      });
+      account.addEventListener('submit', event => { event.preventDefault(); logins++; });
+    </script>`);
+  eq(await page.evaluate(scripts.probe), false);
+  eq(await page.locator('#identity input[type="password"]').inputValue(), '');
+  await page.locator('#account').waitFor({state:'visible'});
+  eq(await page.evaluate(scripts.probe), true);
+  const withOperator = scripts.fill.replace('"serviceOption":""', '"serviceOption":"中国移动"');
+  eq(await page.evaluate(withOperator), 'submitted');
+  eq(await page.locator('#account select').inputValue(), 'cmcc');
+  eq(await page.locator('#account input[name="username"]').inputValue(), 'dummy-user');
+  eq(await page.locator('#account input[type="password"]').inputValue(), 'dummy-password');
+  eq(await page.locator('#identity input[type="password"]').inputValue(), '');
+  eq(await page.evaluate(() => [tabClicks, logins]), [1, 1]);
+ }
+ // A tab without a working handler must not fall through to the identity form.
+ await load('<div role="tab" onclick="window.tabClicks++">上网帐号登录</div><input type="password"><script>window.tabClicks = 0;</script>');
+ eq(await page.evaluate(scripts.probe), false);
+ eq(await page.evaluate(scripts.probe), false);
+ eq(await page.evaluate(() => tabClicks), 1);
  // Generic top-level pages and the original legacy prompt still work.
  await load(fixture);eq(await page.evaluate(scripts.fill),'captcha-required');eq(await page.locator('#pwd').inputValue(),'dummy-password');
  await load('<iframe src="/login" width="900" height="650"></iframe>');eq(await page.evaluate(scripts.manual),'captcha-required');const manual=JSON.parse(await page.evaluate(scripts.read));eq(manual.autoSubmit,false);eq(await page.evaluate(scripts.commit),'filled');eq(await loginFrame().evaluate(()=>loginCalls),0);

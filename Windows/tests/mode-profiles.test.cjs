@@ -62,6 +62,32 @@ const {pathToFileURL}=require('node:url');
   eq(await page.evaluate(()=>campus.snapshot().profile.connectionMode),'wifi');
   eq(await page.evaluate(()=>({local:localStorage.length,session:sessionStorage.length})),{local:0,session:0});
   eq(await page.evaluate(()=>commands.filter(m=>['connect','openPortal','setAutomatic'].includes(m.command)).length),0);
+  // Backup information persists independently in the settings form and saved message.
+  const backup={profile:{connectionMode:'wifi',ssid:'Backup-Campus',useSavedWifiProfile:true,portalEnabled:true,
+    portalUrl:'https://backup.test/login',username:'backup-user',serviceOption:'备用服务',autoSubmit:true},password:'backup-secret'};
+  const withBackup={...profiles,'wifi-backup':backup};
+  await page.reload();await hydrate('wifi',null,withBackup);
+  eq(await value('ssid'),'Custom-University');eq(await value('backupSsid'),'Backup-Campus');
+  eq(await value('backupUsername'),'backup-user');eq(await value('backupPassword'),'backup-secret');
+  eq(await page.locator('#backupSaved').isChecked(),true);
+  await page.locator('#backupUsername').fill('backup draft');
+  await page.locator('[data-connection=wired]').click();
+  eq(await page.locator('#backup-card').isVisible(),false);
+  await page.locator('[data-connection=wifi]').click();
+  eq(await value('backupUsername'),'backup draft');
+  const backupSnapshot=await page.evaluate(()=>campus.snapshot());
+  await page.reload();await hydrate('wifi',backupSnapshot,withBackup);
+  eq(await value('backupUsername'),'backup draft');
+  await page.locator('#save').click();
+  const backupSave=await page.evaluate(()=>commands.filter(m=>m.command==='save').at(-1));
+  eq(backupSave.profile.username,'wifi-user');eq(backupSave.password,'wifi-secret');
+  eq(backupSave.backup.profile.username,'backup draft');eq(backupSave.backup.password,'backup-secret');
+  await page.evaluate(()=>campus.receive({kind:'address',address:'https://backup.test/new',backup:true}));
+  eq(await value('backupPortalUrl'),'https://backup.test/new');eq(await value('portalUrl'),'https://wifi.test/login');
+  await page.locator('#backupSsid').fill('');
+  eq(await page.locator('#backup-options').isVisible(),false);
+  await page.locator('#save').click();
+  eq(await page.evaluate(()=>commands.filter(m=>m.command==='save').at(-1).backup.profile.ssid),'');
   console.log(`PASS: ${checks} connection profile checks (separate passwords, custom SSID, saved restart, drafts, renderer recovery, blank Wi-Fi mode, no automatic network changes).`);
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
