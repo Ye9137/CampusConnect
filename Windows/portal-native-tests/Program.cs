@@ -23,10 +23,22 @@ internal static class Program
         return portal;
     }
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--drcom-only")) {
+            try { DrcomBrowserTests.Run(Expect); }
+            catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; return; }
+            Console.WriteLine($"PASS: {checks} WebView2 Dr.COM checks.");
+            return;
+        }
+        if (args.Contains("--export-only")) {
+            try { BrowserExportTests.Run(Expect); }
+            catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; return; }
+            Console.WriteLine($"PASS: {checks} WebView2 export checks.");
+            return;
+        }
         foreach (var submit in new[] { true, false }) {
             var portal = Create(submit: submit);
             try {
@@ -152,6 +164,7 @@ internal static class Program
                 Expect(!portal.IsAuthenticating && (string)Field(portal, "password")! == "", "real internet success still clears the finished login");
             } finally { portal.View.Dispose(); }
         }
+        BrowserExportTests.Run(Expect);
         BrowserRedirectTests.Run(Expect);
         DrcomBrowserTests.Run(Expect);
         Console.WriteLine($"PASS: {checks} native portal checks (production redirects, recovery, cooldown, manual holds and browser restart).");
