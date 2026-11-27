@@ -13,7 +13,7 @@
 >
 > 使用中如遇到连接或认证问题，请点击 **程序左下角的感叹号**，查看联系方式并联系作者。反馈时请提供 **学校名称** 和 **连接失败的完整视频**，方便排查问题、持续完善适配。
 
-**Windows 2.2.5 正式版**：[下载安装包与更新说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.5)。新增主用 / 备用 Wi-Fi，支持先切换到「上网账号登录」再填写。**macOS 2.2.4**：[下载](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.4) · [更新说明](macOS/2.2.4-更新说明.md)。
+**Windows 2.2.11 正式版**支持一键导出认证页前端，并改进南京铁道职业技术学院和广东创新科技职业学院的自动登录。[下载安装包与更新说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.11)。**macOS 2.2.4**：[下载](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.4) · [更新说明](macOS/2.2.4-更新说明.md)。
 
 
 
@@ -230,7 +230,7 @@ ping 使用系统路由，可能经过 VPN。提供 Windows x64 与 macOS Apple 
 
 ## 下载
 
-**[Windows 2.2.5 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.5/CampusConnect-Windows-x64-2.2.5-Setup.exe)** · **[macOS 2.2.4 通用版](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.4/CampusConnect-macOS-universal-2.2.4.zip)** · [Windows 2.2.5 源码与发布说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.5)
+**[Windows 2.2.11 安装包（x64）](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.11/CampusConnect-Windows-x64-2.2.11-Setup.exe)** · **[macOS 2.2.4 通用版](https://github.com/Ye9137/CampusConnect/releases/download/v2.2.4/CampusConnect-macOS-universal-2.2.4.zip)** · [Windows 2.2.11 源码与发布说明](https://github.com/Ye9137/CampusConnect/releases/tag/v2.2.11)
 
 仅提供最新版下载，历史版本下载已关闭。
 
