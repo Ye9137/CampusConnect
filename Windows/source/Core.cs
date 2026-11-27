@@ -229,9 +229,9 @@ public static class PortalScript
             .Replace("/*CONTEXT_SCRIPT*/", script, StringComparison.Ordinal);
     }
     // Inspect loading pages without credentials before filling the landing form.
-    public static string LoginFormProbe(CampusProfile profile)
+    public static string LoginFormProbe(CampusProfile profile, bool requireNormalAccount = false)
     {
-        var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = "" });
+        var config = JsonSerializer.Serialize(new { origin = CampusProfile.Origin(profile.PortalUrl), passwordSelector = "", requireNormalAccount });
         var script = """
         (() => {
           const cfg = /*PROBE*/;
@@ -247,6 +247,11 @@ public static class PortalScript
                (input.id === 'password' && input.form?.id === 'login_form' &&
                 input.form.querySelector('#user_name[name="username"]') && input.form.querySelector('#login_submit') &&
                 input.form.querySelector('input#tx[type="text"]')?.getClientRects().length > 0)));
+
+            if (cfg.requireNormalAccount) {
+              return passwords.some(input => input.name === 'upass' && input.form?.name === 'f1' &&
+                input.form.querySelector('input[name="DDDDD"]') && input.form.querySelector('[name="0MKKey"]'));
+            }
 
             // Portals with separate identity and internet account tabs may not
             // render the internet account form until their own tab handler runs.
@@ -345,12 +350,12 @@ public static class PortalScript
         return InContext(profile, script, "'wrong-origin'");
     }
 
-    public static string Build(CampusProfile profile, string password, bool statusOnly = false, bool drcomOnly = false)
+    public static string Build(CampusProfile profile, string password, bool statusOnly = false, bool drcomOnly = false, bool requireNormalAccount = false)
     {
         var origin = CampusProfile.Origin(profile.PortalUrl) ?? throw new InvalidOperationException("认证地址无效。");
         var payload = JsonSerializer.Serialize(new {
-            origin, username = profile.Username, password, serviceOption = profile.ServiceOption, userSelector = "",
-            passwordSelector = "", submitSelector = "", submit = profile.AutoSubmit, confirmSubmit = true, statusOnly, drcomOnly
+            origin, username = statusOnly ? "" : profile.Username, password, serviceOption = profile.ServiceOption, userSelector = "",
+            passwordSelector = "", submitSelector = "", submit = profile.AutoSubmit, confirmSubmit = true, statusOnly, drcomOnly, requireNormalAccount
         });
         using var stream = typeof(PortalScript).Assembly.GetManifestResourceStream("CampusConnect.PortalTemplate.js")
             ?? throw new InvalidOperationException("缺少认证脚本。");

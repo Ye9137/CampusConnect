@@ -251,6 +251,7 @@ internal sealed partial class MainForm : Form
                 else SaveFromMessage(message, enable: true);
                 break;
             case "openPortal": await OpenPortalAsync(); break;
+            case "exportPortal": await ExportPortalAsync(); break;
             case "showCaptcha": await portal.ShowCaptchaAsync(); break;
             case "discoverPortal": await OpenPortalAsync(discover: true); break;
             case "stopPortal": StopAuthentication(); portalStatus = "认证已暂停。"; PushState(); UpdatePortalVisibility(); break;
@@ -258,6 +259,8 @@ internal sealed partial class MainForm : Form
             case "adoptAddress":
                 var url = portal.Address;
                 if (CampusProfile.Origin(url) is null) throw new InvalidOperationException("当前没有可保存的认证网址。");
+                if (Connectivity.IsPublicProbeHost(new Uri(url))) { Record("当前是公共探测页面，请在学校登录表单出现后保存地址。"); break; }
+                if (DrcomPortal.IsUsageAddress(url)) { Record("当前显示已用时间和流量，请在登录前的页面保存认证地址。"); break; }
                 Post(new { kind = "address", address = url, backup = UsingBackupWifi });
                 Record("请确认网址属于学校，点击保存后生效。");
                 break;
@@ -340,6 +343,7 @@ internal sealed partial class MainForm : Form
             wiredAuth = saved.WiredAuth, connectionLabel = saved.ConnectionLabel, webPortalEnabled = active.UsesWebPortal,
             ethernetAdapters, broadbandEntries,
             automatic = saved.Automatic, busy = DesktopBridge.ControlsBusy(busy, backgroundRefreshing), permissionNeeded, lastScan, status,
+            canExportPortal = portal.IsActive && CampusProfile.Origin(portal.Address) is not null, exportingPortal,
             portalStatus, portalAddress = portal.Address,
             networks = networks.DistinctBy(n => n.Ssid).Select(n => new { n.Ssid, n.Signal, n.Secure }).ToArray()
         }};
@@ -619,6 +623,9 @@ internal sealed partial class MainForm : Form
                 online = false; recovery.Observe(InternetStatus.Unavailable); portal.Stop(clearView: false);
                 Record("校园网络连接已变化，等待重新连接。"); return;
             }
+            if (activeProfile.Automatic && activeProfile.AutoSubmit && activeProfile.UsesWebPortal &&
+                await portal.ObserveSchoolLogoutAsync()) result = InternetStatus.Unavailable;
+            if (expected != generation || IsDisposed) return;
             online = result == InternetStatus.Online;
             detectedPortalUrl = observation.Portal.PortalUrl;
             detectedPortalGeneration = generation;
@@ -663,7 +670,8 @@ internal sealed partial class MainForm : Form
             var expected = generation;
             recovery.Begin(DateTimeOffset.UtcNow);
             if (showPage) Navigate("portal");
-            if (!discover && await CampusNetwork.IsAvailableAsync(profile)) {
+            var usageEntry = DrcomPortal.IsUsageAddress(profile.PortalUrl);
+            if (!usageEntry && !discover && await CampusNetwork.IsAvailableAsync(profile)) {
                 if (detectedPortalGeneration != expected) {
                     var probe = await Connectivity.ProbePortalAsync();
                     if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
@@ -677,7 +685,7 @@ internal sealed partial class MainForm : Form
             }
             if (expected != generation || serial != portalOpenSerial || IsDisposed) return;
             // Live entry is scoped to this attempt; keep all saved profile fields.
-            var active = !discover && detectedPortalGeneration == expected && detectedPortalUrl is { } entry && CampusProfile.Origin(entry) is not null
+            var active = !usageEntry && !discover && detectedPortalGeneration == expected && detectedPortalUrl is { } entry && CampusProfile.Origin(entry) is not null
                 ? profile with { PortalUrl = entry } : profile;
             await portal.OpenAsync(active, password, discover, automaticRetry);
             if (serial != portalOpenSerial || IsDisposed) return;

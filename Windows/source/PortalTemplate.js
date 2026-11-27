@@ -24,6 +24,18 @@
   if (drcomResult && Number(window.Msg) !== 0 && Number(window.Msg) !== 14)
     return 'authentication-rejected:DRCOM_' + Number(window.Msg);
   if (cfg.drcomOnly) return 'not-authenticated';
+  // A cached a79 document is not proof of a live session on a later reconnect.
+  const gatewayAccountStatus = (() => {
+    if (!/^\/a79\.htm$/i.test(location.pathname) || document.querySelector('input[type="password"]')) return false;
+    const form = document.querySelector('form[name="f1"]');
+    const button = form?.querySelector('input[type="button"][name="logout"]');
+    const usage = form?.querySelector('[name="PageTips"]')?.innerText || '';
+    return !!button?.getClientRects().length && !button.disabled &&
+      /^注销(?:\(logout\))?$/i.test(button.value.replace(/\s+/g, '')) &&
+      /^(?:javascript:\s*)?wc\s*\(\s*\)\s*;?$/i.test((button.getAttribute('onclick') || '').trim()) &&
+      usage.includes('已使用时间') && usage.includes('已使用流量');
+  })();
+  if (gatewayAccountStatus) return 'authenticated';
   const outcome = window.__campusSubmitAttempt?.result;
   const successPage = location.pathname === '/eportal/success.jsp' &&
     !!new URLSearchParams(location.search).get('userIndex');
@@ -56,7 +68,21 @@
     input === portalPass ? document.querySelector('#pwd_tip') || document.querySelector('#passwordIn_1') : input === zportalPass ? input.form?.querySelector('input#tx[type="text"]') : null;
   const available = input => editable(input) && (visible(input) ||
     ((portalButton || zportalButton) && visible(tipFor(input))));
+  const lfForm = location.pathname.startsWith('/lfradius/libs/portal/unify/portal.php/login/') ?
+    document.querySelector('form#_wifi_login[name="_wifi_login"]') : null;
   try {
+    // The LFRadius "用户登录" button submits its named form through an inline handler.
+    const lfUser = lfForm?.querySelector('input[type="text"][name="usrname"]');
+    const lfPass = lfForm?.querySelector('input[type="password"][name="passwd"]');
+    const lfButton = lfForm?.querySelector('button#_wifi_btn_login[type="button"]');
+    if (lfForm) {
+      const action = new URL(lfForm.action, location.href);
+      if (lfForm.method !== 'post' || action.origin !== location.origin ||
+          action.pathname.replace(/\/$/, '') !== '/lfradius/libs/portal/unify/portal.php/login/cmcc_login' ||
+          lfUser?.form !== lfForm || lfPass?.form !== lfForm || cfg.requireNormalAccount) return 'missing-fields';
+      if (lfButton?.form !== lfForm || !/^\s*document\.forms\[(['"])_wifi_login\1\]\.submit\(\)\s*;?\s*$/.test(lfButton.getAttribute('onclick') || ''))
+        return 'missing-submit';
+    }
     // Ruijie ePortal displays readonly tips over hidden real inputs. Its login
     // control is an image-only anchor, so text/button heuristics cannot find it.
     portalUser = document.querySelector('#username');
@@ -101,10 +127,21 @@
       const button = gportalForm.querySelector('input#first_button[type="button"]');
       gportalButton = button && /^\s*(?:javascript\s*:\s*)?login\s*\(\s*\)\s*;?\s*$/.test(button.getAttribute('onclick') || '') ? button : null;
     }
+    // The gateway renderer uses f1 for normal accounts; other panels may contain their own passwords.
+    const normalForm = document.querySelector('form[name="f1"]');
+    const namedUser = normalForm?.querySelector('input[name="DDDDD"]');
+    const namedPass = normalForm?.querySelector('input[type="password"][name="upass"]');
+    const namedSubmit = normalForm?.querySelector('input[name="0MKKey"][type="button"],input[name="0MKKey"][type="submit"],input[name="0MKKey"][type="image"],button[name="0MKKey"]:not([type="reset"])');
+    const normalAccount = normalForm && namedUser?.form === normalForm && namedPass?.form === normalForm &&
+      namedSubmit?.form === normalForm && ['text','tel','email'].includes(namedUser.type) &&
+      (visible(namedPass) || !!document.querySelector('script[src*="/eportal/extern/nanjingtiedao/"]'));
+    if (cfg.requireNormalAccount && (!normalAccount || gportalForm)) return 'missing-fields';
+    if (normalAccount && (!available(namedUser) || !available(namedPass))) return 'missing-fields';
+    if (normalAccount && document.readyState !== 'complete') return 'waiting-ready';
     pass = cfg.passwordSelector ? document.querySelector(cfg.passwordSelector) :
-      gportalForm ? gportalPass : portalPass || zportalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
+      lfForm ? lfPass : gportalForm ? gportalPass : normalAccount ? namedPass : portalPass || zportalPass || [...document.querySelectorAll('input[type="password"]')].find(e => editable(e) && visible(e));
     const root = pass && pass.form ? pass.form : document;
-    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : gportalForm ? gportalUser : portalUser || zportalUser ||
+    user = cfg.userSelector ? document.querySelector(cfg.userSelector) : lfForm ? lfUser : gportalForm ? gportalUser : normalAccount ? namedUser : portalUser || zportalUser ||
       [...root.querySelectorAll('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')]
       .filter(e => editable(e) && visible(e)).find(e => /user|account|student|phone|login|学号|账号|手机/i.test([e.name,e.id,e.placeholder,e.autocomplete].join(' ')));
     if (!user && !cfg.userSelector) user = [...root.querySelectorAll('input[type="text"],input[type="tel"],input[type="email"],input:not([type])')].find(e => editable(e) && visible(e));
@@ -135,7 +172,7 @@
       e.matches('button:not([type="reset"]),input[type="submit"],input[type="button"],a,[role="button"],[onclick]') && e.type !== 'reset');
     const idSubmit = idButtons.length === 1 ? idButtons[0] : null;
     // A rejected known account button must not bypass its handler check via generic text matching.
-    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : gportalForm ? gportalButton : portalButton || zportalButton || accountButton || domainAccountButton || idSubmit ||
+    submit = cfg.submitSelector ? document.querySelector(cfg.submitSelector) : lfForm ? lfButton : gportalForm ? gportalButton : normalAccount ? namedSubmit : portalButton || zportalButton || accountButton || domainAccountButton || idSubmit ||
       [...root.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')].filter(e => e.getClientRects().length > 0)
         .find(e => e !== accountCandidate && e.id !== 'submit' && (e.type === 'submit' || /^(立即登录|立即登陆|登录|登陆|认证|连接|login|signin|connect)(login|登录|登陆)?$/i.test((e.innerText || e.value || '').replace(/\s+/g, ''))));
   } catch (_) { return 'invalid-selector'; }
@@ -191,6 +228,8 @@
     for (const opener of serviceOpeners) window.__campusRegisterServiceMenu?.(opener);
     const eportalOpener = document.querySelector('#serviceShowHideTop');
     window.__campusRegisterServiceMenu?.(eportalOpener);
+    if (!serviceName && pass.name === 'upass' && user.name === 'DDDDD' &&
+        serviceSelects.some(select => select.name === 'ISP_select' && select.value === '-1')) return 'service-required';
     if (!serviceName && (serviceSelects.some(select => servicePlaceholder(select.selectedOptions[0]?.textContent)) ||
         serviceOpeners.some(control => servicePlaceholder(serviceText(control))))) {
       return 'service-required';
@@ -324,6 +363,9 @@
     }
     return null;
   })();
+  // Keep the school’s current disclaimer choice. An unchecked box needs a user decision.
+  if (lfForm && !lfForm.querySelector('input[type="checkbox"][name="treaty"]')?.checked)
+    return cfg.submit ? 'agreement-required' : 'filled';
   /*CAMPUS_AGREEMENTS*/
   if (serviceStatus) return serviceStatus;
   // School handlers can reject/reset a value; never report success or submit it.

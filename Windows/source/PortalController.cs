@@ -50,6 +50,7 @@ internal sealed class PortalController
     private int popupSession;
     private string openedEntryUrl = "";
     private bool drcomLogoutRequested;
+    private Uri? recoveryGateway;
     private readonly Func<Task<CoreWebView2Environment>> getEnvironment;
     private readonly Func<CampusProfile, Task<bool>> campusConnected;
 
@@ -114,6 +115,13 @@ internal sealed class PortalController
         View.CoreWebView2.DownloadStarting += (_, e) => e.Cancel = true;
         view.CoreWebView2.WebResourceResponseReceived += async (_, e) => await CaptureCaptchaImageAsync(view, e);
         View.CoreWebView2.NavigationStarting += async (_, e) => {
+            if (recoveryGateway != null && (discovering || password.Length > 0) &&
+                Uri.TryCreate(e.Uri, UriKind.Absolute, out var destination) &&
+                destination.Scheme is "http" or "https" && Connectivity.IsPublicProbeHost(destination)) {
+                e.Cancel = true;
+                Fail("public-landing", "学校网关跳到了公共网页，尚未找到学校登录表单。请确认校园网连接和登录入口。");
+                return;
+            }
             generation++;
             navigationId = e.NavigationId;
             if (e.Uri != "about:blank" && CampusProfile.Origin(e.Uri) is null) e.Cancel = true;
@@ -292,7 +300,11 @@ internal sealed class PortalController
         if (!connected) throw new InvalidOperationException(saved.IsWired ? "请先插好网线并启用有线网络，再打开认证页。" : "请先连接已设置的校园 Wi-Fi，再打开认证页。");
         saved.Validate();
         openedEntryUrl = saved.PortalUrl;
-        profile = discover ? saved with { PortalUrl = "http://www.msftconnecttest.com/redirect", Username = "", AutoSubmit = false } : saved;
+        // a79.htm is a result document. Loading the gateway itself in WebView2 also
+        // handles a 200 response with a JS/meta redirect or a form rendered in place.
+        recoveryGateway = DrcomPortal.IsUsageAddress(saved.PortalUrl) ? new Uri(CampusProfile.Origin(saved.PortalUrl)! + "/") : null;
+        var entry = recoveryGateway?.AbsoluteUri ?? (discover ? "http://www.msftconnecttest.com/redirect" : saved.PortalUrl);
+        profile = discover ? saved with { PortalUrl = entry, Username = "", AutoSubmit = false } : saved with { PortalUrl = entry };
         discovering = discover;
         redirectSession = new(profile.PortalUrl);
         continueAfterNavigation = !discover;
@@ -306,16 +318,46 @@ internal sealed class PortalController
         if (expected != generation || profile is null) return;
         IsActive = true;
         View.CoreWebView2.Navigate(profile.PortalUrl);
-        Status?.Invoke(discover ? "正在探测认证地址，请确认学校页面后使用当前地址。" : "正在打开校园认证页…");
+        Status?.Invoke(recoveryGateway != null ? "正在打开学校网关，等待登录页面…" : discover ? "正在探测认证地址，请确认学校页面后使用当前地址。" : "正在打开校园认证页…");
     }
     private string BootstrapFor(CampusProfile active) => bootstrapSource.Replace("/*CAMPUS_ORIGIN*/", JsonSerializer.Serialize(CampusProfile.Origin(active.PortalUrl)));
     public void ConfirmInternetAccess()
     {
+        // A whitelisted probe can succeed while the school is still showing or
+        // loading its login form. Keep an explicit gateway attempt alive through submission.
+        if (recoveryGateway != null && !authenticationConfirmed &&
+            (discovering || (!finished && authenticationDeadline == null))) return;
         if (!internetConfirmed) generation++;
         ClearProblem();
         internetConfirmed = true; RequiresInteraction = drcomLogoutRequested; RetryNotBefore = null;
         authenticationDeadline = null; finished = true; continueAfterNavigation = false; password = "";
         Status?.Invoke("已经连接成功");
+    }
+    // The railway portal renders its logout result into the current document.
+    // A successful public connectivity probe can outlive the school session.
+    internal async Task<bool> ObserveSchoolLogoutAsync()
+    {
+        if (!IsActive || discovering || profile is not { AutoSubmit: true, Automatic: true } ||
+            !DrcomPortal.IsUsageAddress(Address)) return false;
+        var expected = generation;
+        var view = View;
+        try {
+            var response = await view.CoreWebView2.ExecuteScriptAsync("""
+                (() => {
+                  const message = document.querySelector('#message');
+                  if (!message?.getClientRects().length) return false;
+                  const text = message.innerText.replace(/\s+/g,'').toLowerCase();
+                  return /^(?:注销成功[!！。]?|logoutsuccessful[!.]?|logoutsuccess[!.]?)$/.test(text);
+                })()
+                """);
+            if (expected != generation || view != View || !IsActive || response != "true") return false;
+            internetConfirmed = false; authenticationConfirmed = false;
+            finished = true; continueAfterNavigation = false; password = "";
+            RequiresInteraction = false; authenticationDeadline = null; RetryNotBefore = null;
+            return true;
+        } catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) {
+            return false;
+        }
     }
     public void ReportInternetUnavailable() { internetConfirmed = false; if (!RequiresInteraction) Status?.Invoke("未连接网络"); }
     public void ResumeView()
@@ -332,6 +374,7 @@ internal sealed class PortalController
     {
         CloseDrcomPopups();
         drcomLogoutRequested = false;
+        recoveryGateway = null;
         var waitingForUser = RequiresInteraction && authenticationDeadline is null;
         ClearProblem();
         generation++;
@@ -352,6 +395,7 @@ internal sealed class PortalController
     {
         CloseDrcomPopups();
         drcomLogoutRequested = false;
+        recoveryGateway = null;
         ClearProblem();
         generation++;
         profile = null; password = ""; finished = false; continueAfterNavigation = false; authenticationDeadline = null; authenticationConfirmed = false; internetConfirmed = false;
@@ -519,6 +563,7 @@ internal sealed class PortalController
     private async Task FillAsync(int expected)
     {
         var formWaits = 0;
+        string? noticeStatus = null;
         var formDeadline = DateTimeOffset.UtcNow.AddSeconds(90);
         for (var attempt = 0; attempt <= 80; attempt++) {
             if (expected != generation || finished || profile is null) return;
@@ -532,15 +577,34 @@ internal sealed class PortalController
                 if (attempt < 80) { await Task.Delay(150); continue; }
                 Fail("waiting-ready", "认证跳转尚未完成，请等待页面加载后重新认证。"); return;
             }
-            if (discovering) { RequiresInteraction = true; Status?.Invoke("已打开探测到的页面，请确认属于学校后使用当前地址。"); return; }
-            if (profile.Username.Length == 0 || password.Length == 0) {
+            if (recoveryGateway is { } gateway && Uri.TryCreate(View.CoreWebView2.Source, UriKind.Absolute, out var current) &&
+                (current.IdnHost != gateway.IdnHost || (gateway.Scheme == "https" && current.Scheme != "https"))) {
+                RequiresInteraction = true; finished = true; password = "";
+                Status?.Invoke("网关跳转到了其他站点。请确认学校登录入口后重新认证。"); return;
+            }
+            var notice = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(
+                PortalScript.InContext(activeProfile, DrcomPortal.AdvanceRailwayNotice, "''")));
+            if (expected != generation || finished) return;
+            if (notice is "waiting" or "opening") {
+                recoveryGateway ??= new Uri(CampusProfile.Origin(activeProfile.PortalUrl)!);
+                if (noticeStatus != notice) {
+                    noticeStatus = notice;
+                    Status?.Invoke(notice == "waiting" ? "已找到校园网络使用须知，等待页面可以点击…" : "已点击校园网络使用须知，正在等待学校显示登录框…");
+                }
+                if (DateTimeOffset.UtcNow >= formDeadline) {
+                    Fail("waiting-ready", "学校须知页尚未显示登录框，请点击须知正文后继续。"); return;
+                }
+                await Task.Delay(250); attempt--; continue;
+            }
+            if (discovering && recoveryGateway == null) { RequiresInteraction = true; Status?.Invoke("已打开探测到的页面，请确认属于学校后使用当前地址。"); return; }
+            if (!discovering && (profile.Username.Length == 0 || password.Length == 0)) {
                 RequiresInteraction = true; Fail("missing-credentials", "请在设置中填写上网账号密码，或直接在网页中手动登录。"); return;
             }
             // The document-start script was scoped to the saved entry origin.
             // Install it on the current redirect destination too, without reloads.
             await View.CoreWebView2.ExecuteScriptAsync(PortalScript.InContext(activeProfile, BootstrapFor(activeProfile)));
             if (expected != generation || finished) return;
-            var hasForm = JsonSerializer.Deserialize<bool>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.LoginFormProbe(activeProfile)));
+            var hasForm = JsonSerializer.Deserialize<bool>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.LoginFormProbe(activeProfile, requireNormalAccount: recoveryGateway != null)));
             if (expected != generation || finished) return;
             if (!hasForm) {
                 if (await CheckAuthenticationPageAsync()) return;
@@ -553,7 +617,11 @@ internal sealed class PortalController
                 await Task.Delay(formWaits++ < 80 ? 150 : 500);
                 attempt--; continue;
             }
-            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(activeProfile, password)));
+            if (discovering) {
+                finished = true; RequiresInteraction = true;
+                Status?.Invoke("已找到学校登录表单，可以使用当前页面地址。"); return;
+            }
+            var result = JsonSerializer.Deserialize<string>(await View.CoreWebView2.ExecuteScriptAsync(PortalScript.Build(activeProfile, password, requireNormalAccount: recoveryGateway != null)));
             if (expected != generation || authenticationConfirmed || internetConfirmed) return;
             switch (result) {
                 case "captcha-required": await HandleCaptchaAsync(expected); return;

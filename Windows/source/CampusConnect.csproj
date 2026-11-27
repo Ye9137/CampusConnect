@@ -9,8 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CampusConnect</AssemblyName>
-    <Version>2.2.5</Version>
-    <FileVersion>2.2.5.0</FileVersion>
+    <Version>2.2.11</Version>
+    <FileVersion>2.2.11.0</FileVersion>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -34,6 +34,7 @@
     <EmbeddedResource Include="PortalAgreements.js" />
     <EmbeddedResource Include="../../macOS/source/PortalBootstrap.js" LogicalName="CampusConnect.PortalBootstrap.js" />
     <EmbeddedResource Include="PortalCaptcha.js" />
+    <EmbeddedResource Include="PortalExport.js" />
     <EmbeddedResource Include="Desktop.html" />
     <None Update="models/*.onnx;models/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>

@@ -92,17 +92,22 @@ internal static class Connectivity
         }
     }
 
+    internal static bool IsPublicProbeHost(Uri uri)
+    {
+        var host = uri.IdnHost.TrimEnd('.');
+        return new[] { "baidu.com", "msftconnecttest.com", "msftncsi.com", "hao123.com", "msn.cn", "msn.com" }.Any(domain =>
+            host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase));
+    }
+
     internal static bool IsUsablePortalEntry(string? address)
     {
         if (address is null || CampusProfile.Origin(address) is null) return false;
         var uri = new Uri(address, UriKind.Absolute);
         // Public probe services can redirect HTTP to their own HTTPS site.
         // That redirect is not evidence of a campus authentication entry.
-        var host = uri.IdnHost.TrimEnd('.');
-        if (new[] { "baidu.com", "msftconnecttest.com", "msftncsi.com", "hao123.com" }.Any(domain =>
-            host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))) return false;
-        if (DrcomPortal.IsStatusAddress(address) || uri.AbsolutePath.Equals("/F.htm", StringComparison.OrdinalIgnoreCase)) return false;
+        if (IsPublicProbeHost(uri)) return false;
+        if (DrcomPortal.IsStatusAddress(address) || DrcomPortal.IsUsageAddress(address) || uri.AbsolutePath.Equals("/F.htm", StringComparison.OrdinalIgnoreCase)) return false;
         if (!IsEportalAddress(uri)) return true;
         var path = uri.AbsolutePath.TrimEnd('/');
         return !path.EndsWith("/success.jsp", StringComparison.OrdinalIgnoreCase)
@@ -125,7 +130,8 @@ internal static class Connectivity
     {
         if (IsUsablePortalEntry(observedEntry)) return observedEntry;
         var probes = new List<Uri> { EntryProbeAddress };
-        if (CampusProfile.Origin(savedEntry) is { } origin && IsEportalAddress(new Uri(savedEntry, UriKind.Absolute)))
+        if (CampusProfile.Origin(savedEntry) is { } origin &&
+            (IsEportalAddress(new Uri(savedEntry, UriKind.Absolute)) || DrcomPortal.IsUsageAddress(savedEntry)))
             probes.Add(new Uri(origin + "/"));
         foreach (var address in probes) {
             using var deadline = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(4));
