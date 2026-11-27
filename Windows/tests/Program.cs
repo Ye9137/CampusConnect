@@ -496,12 +496,19 @@ Expect(await Connectivity.DiscoverPortalEntryAsync(staleEportal, null, async (re
     return request.RequestUri!.Host == "www.baidu.com" ? EntryResponse(302, "https://www.baidu.com/") : EntryResponse(302, freshWire);
 }) == freshWire && entryProbes.SequenceEqual(new[] { "http://www.baidu.com/", "http://gateway.test:8080/" }),
     "public probe HTTP-to-HTTPS redirect is skipped and the gateway still supplies the fresh wired entry");
+entryProbes.Clear();
+Expect(await Connectivity.DiscoverPortalEntryAsync("http://gateway.test:8080/a79.htm", "https://www.msn.cn/zh-cn", async (request, token) => {
+    using var ignored = await CaptureEntryRequest(request, token);
+    return request.RequestUri!.Host == "www.baidu.com" ? EntryResponse(200) : EntryResponse(302, "/login");
+}) == "http://gateway.test:8080/login" && entryProbes.SequenceEqual(new[] { "http://www.baidu.com/", "http://gateway.test:8080/" }),
+    "old railway status URL recovers a current gateway login redirect and ignores MSN");
 foreach (var rejectedEntry in new[] {
     "http://gateway.test/eportal/index.jsp", "http://gateway.test/eportal/index.jsp?",
     "http://gateway.test/eportal/success.jsp?userIndex=fixture",
     "http://gateway.test/eportal/redirectortosuccess?userIndex=fixture",
     "http://gateway.test/EPORTAL/SUCCESS.JSP?userIndex=fixture",
     "javascript:alert(1)", "file:///C:/login", "http://user:secret@gateway.test/eportal/index.jsp?ticket=fixture",
+    "http://gateway.test/a79.htm", "https://www.msn.cn/zh-cn", "https://www.msn.com/",
     "https://baidu.com/", "https://www.baidu.com/", "http://sub.baidu.com/landing",
     "https://www.BAIDU.COM./", "http://www.msftconnecttest.com/", "https://www.msftconnecttest.com/connecttest.txt",
     "http://msftconnecttest.com/redirect", "http://www.msftncsi.com/ncsi.txt",

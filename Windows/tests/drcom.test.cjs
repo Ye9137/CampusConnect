@@ -36,7 +36,7 @@ function wc(){if(confirm('关闭此窗口意味着结束本次连接，注销请
     else res.end(login);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({headless:true,proxy:{server:'http://127.0.0.1:'+server.address().port}});
+  const browser = await chromium.launch({headless:true,executablePath:process.env.CAMPUS_CHROME_PATH || undefined,proxy:{server:'http://127.0.0.1:'+server.address().port}});
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -78,6 +78,20 @@ function wc(){if(confirm('关闭此窗口意味着结束本次连接，注销请
     assert.equal(await page.evaluate(scripts.fill),'submitted','full-width spaces work without a known submit ID');
     assert.equal(await page.evaluate(scripts.fill),'already-submitted');
     assert.equal(await page.evaluate(()=>spacedClicks),1);
+    await page.goto('http://drcom.test/a79.htm');
+    await page.setContent('<form name=f1><div name=PageTips>已使用时间 已使用流量</div><input type=button name=logout onclick="wc()" value="注 销(Logout)"></form>');
+    assert.equal(await page.evaluate(scripts.status),'authenticated');
+    await page.evaluate(()=>{document.querySelector('[name=PageTips]').textContent='请登录'});
+    assert.equal(await page.evaluate(scripts.status),'not-submitted','logout button alone is not a confirmed session');
+    await page.goto('http://drcom.test/');
+    await page.setContent('<form name=f1><input name=DDDDD><input type=password name=upass><select name=ISP_select><option value="-1">--Please choose--</option><option value="campus">校园网</option></select><input type=button name=0MKKey value="登 录(Login)" onclick="window.normalClicks++"></form>');
+    await page.evaluate(()=>{window.normalClicks=0});
+    assert.equal(await page.evaluate(scripts.fill),'service-required');
+    assert.equal(await page.evaluate(()=>normalClicks),0,'the placeholder cannot submit credentials');
+    await page.locator('select').selectOption('campus');
+    assert.equal(await page.evaluate(scripts.fill),'submitted');
+    assert.equal(await page.evaluate(scripts.fill),'already-submitted');
+    assert.equal(await page.evaluate(()=>normalClicks),1,'manual operator choice is preserved');
     console.log('PASS: Dr.COM independent popup + real form POST, duplicate ID/reset, full-width login text, Msg success/rejection/logout, status-page deduplication, negative signatures, and no automatic logout.');
   } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(e=>{console.error(e);process.exitCode=1});
